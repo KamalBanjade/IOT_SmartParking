@@ -1,0 +1,11 @@
+{
+  "slots": [
+    { "slotId": 1, "label": "A1", "controllerId": "ESP32-A1", "topic": "parking/slots/ESP32-A1" },
+    { "slotId": 2, "label": "A2", "controllerId": "ESP32-A2", "topic": "parking/slots/ESP32-A2" },
+    { "slotId": 3, "label": "B1", "controllerId": "ESP32-B1", "topic": "parking/slots/ESP32-B1" },
+    { "slotId": 4, "label": "B2", "controllerId": "ESP32-B2", "topic": "parking/slots/ESP32-B2" },
+    { "slotId": 5, "label": "B3", "controllerId": "ESP32-B3", "topic": "parking/slots/ESP32-B3" }
+  ],
+  "rate_per_hour": 30,
+  "currency": "NPR"
+}

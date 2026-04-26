@@ -43,8 +43,8 @@ customerApi.interceptors.response.use(
   (err) => {
     if (err.response?.status === 401) {
       localStorage.removeItem('customerToken');
-      if (window.location.pathname !== '/portal/login' && window.location.pathname !== '/portal/setup') {
-        window.location.href = '/portal/login';
+      if (window.location.pathname !== '/login/customer' && window.location.pathname !== '/portal/setup') {
+        window.location.href = '/login/customer';
       }
     }
     return Promise.reject(err);
@@ -65,7 +65,7 @@ export const usersApi = {
   applyDiscount: (id, sessionId) => operatorApi.post(`/api/users/${id}/apply-discount`, { sessionId }),
   regenerateQr: (id) => operatorApi.post(`/api/users/${id}/regenerate-qr`),
   search: (q) => operatorApi.get(`/api/users/search?q=${encodeURIComponent(q)}`),
-  getAll: () => operatorApi.get('/api/users'),
+  getAll: (role = 'all') => operatorApi.get(`/api/users/all?role=${role}`),
   update: (id, data) => operatorApi.put(`/api/users/${id}`, data),
   delete: (id) => operatorApi.delete(`/api/users/${id}`),
 };
@@ -73,6 +73,7 @@ export const usersApi = {
 export const sessionsApi = {
   getActive: () => operatorApi.get('/api/sessions/active'),
   getBySlot: (slotId) => operatorApi.get(`/api/sessions/slot/${slotId}`),
+  preview: (slotId) => operatorApi.get(`/api/sessions/preview/${slotId}`),
   getById: (id) => operatorApi.get(`/api/sessions/slot/${id}`),
   entry: (data) => operatorApi.post('/api/sessions/entry', data),
   exit: (data) => operatorApi.post('/api/sessions/exit', data),
@@ -84,12 +85,14 @@ export const paymentsApi = {
   pay: (id, method, appliedDiscount = 0) => operatorApi.post(`/api/payments/${id}/pay`, { method, appliedDiscount }),
   initiateKhalti: (id) => operatorApi.post(`/api/payments/${id}/khalti/initiate`),
   verifyKhalti: (data) => operatorApi.post('/api/payments/khalti/verify', data),
+  getStatus: (paymentId) => operatorApi.get(`/api/payments/${paymentId}/status`),
 };
 
 export const adminApi = {
   getDashboard: () => operatorApi.get('/api/admin/dashboard'),
-  getSessions: (date) => operatorApi.get(`/api/admin/sessions?date=${date || ''}`),
+  getSessions: (date, page = 1, limit = 15) => operatorApi.get(`/api/admin/sessions?date=${date || ''}&page=${page}&limit=${limit}`),
   getRevenue: (period) => operatorApi.get(`/api/admin/analytics/revenue?period=${period}`),
+  getUserGrowth: (period) => operatorApi.get(`/api/admin/analytics/user-growth?period=${period}`),
   getPeakHours: () => operatorApi.get('/api/admin/analytics/peak-hours'),
   getSlotPerformance: () => operatorApi.get('/api/admin/analytics/slot-performance'),
   getMembersAnalytics: () => operatorApi.get('/api/admin/analytics/members'),
@@ -108,7 +111,9 @@ export const authApi = {
 
 export const portalApi = {
   getProfile: () => customerApi.get('/api/users/my/profile'),
-  getSessions: (page = 1) => customerApi.get(`/api/sessions/my?page=${page}`),
+  getSessions: (page = 1, limit = 10) => customerApi.get(`/api/sessions/my?page=${page}&limit=${limit}`),
+  initiatePayment: (paymentId) => customerApi.post(`/api/payments/${paymentId}/customer/initiate`),
+  getPaymentStatus: (paymentId) => customerApi.get(`/api/payments/${paymentId}/status`),
 };
 
 export default operatorApi;

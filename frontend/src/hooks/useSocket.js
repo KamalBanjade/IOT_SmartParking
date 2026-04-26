@@ -7,33 +7,43 @@ export function useSocket() {
   const [slots, setSlots] = useState([]);
   const [connected, setConnected] = useState(false);
 
-  useEffect(() => {
-    const socket = io(SOCKET_URL);
+  const [socket, setSocketInstance] = useState(null);
 
-    socket.on('connect', () => {
+  useEffect(() => {
+    const s = io(SOCKET_URL, {
+      path: "/socket.io",
+      transports: ["websocket", "polling"]
+    });
+    setSocketInstance(s);
+
+    s.on('connect', () => {
       setConnected(true);
       console.log('Connected to Socket.IO');
     });
 
-    socket.on('disconnect', () => {
+    s.on('disconnect', () => {
       setConnected(false);
       console.log('Disconnected from Socket.IO');
     });
 
-    socket.on('initialState', (initialSlots) => {
+    s.on('initialState', (initialSlots) => {
       setSlots(initialSlots);
     });
 
-    socket.on('slotUpdated', (updatedSlot) => {
+    s.on('slotUpdated', (updatedSlot) => {
+      console.log('📡 LIVE UPDATE RECEIVED:', updatedSlot);
       setSlots((prevSlots) =>
-        prevSlots.map((slot) => (slot.id === updatedSlot.slotId || slot.id === updatedSlot.id ? { ...slot, ...updatedSlot } : slot))
+        prevSlots.map((slot) => {
+          const isMatch = Number(slot.id) === Number(updatedSlot.slotId) || Number(slot.id) === Number(updatedSlot.id);
+          return isMatch ? { ...slot, ...updatedSlot, id: slot.id } : slot;
+        })
       );
     });
 
     return () => {
-      socket.disconnect();
+      s.disconnect();
     };
   }, []);
 
-  return { slots, connected };
+  return { slots, connected, socket };
 }

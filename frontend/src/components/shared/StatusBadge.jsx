@@ -1,26 +1,22 @@
 import React from 'react';
 
 export default function StatusBadge({ status }) {
-  let colorClasses = '';
-  switch (status) {
-    case 'active':
-    case 'occupied':
-      colorClasses = 'text-blue-400 bg-blue-400/10';
-      break;
-    case 'available':
-    case 'completed':
-      colorClasses = 'text-green-400 bg-green-400/10';
-      break;
-    case 'abandoned':
-      colorClasses = 'text-neutral-400 bg-neutral-400/10';
-      break;
-    default:
-      colorClasses = 'text-neutral-400 bg-neutral-400/10';
-  }
-
+  const map = {
+    active:    'bg-accent/10 text-accent border-accent/20',
+    occupied:  'bg-accent/10 text-accent border-accent/20',
+    completed: 'bg-available/10 text-available border-available/20',
+    available: 'bg-available/10 text-available border-available/20',
+    abandoned: 'bg-[var(--text-muted)]/10 text-[var(--text-muted)] border-[var(--text-muted)]/20',
+  };
+  const label = {
+    active: 'ACTIVE', occupied: 'ACTIVE',
+    completed: 'COMPLETED', available: 'AVAILABLE',
+    abandoned: 'ABANDONED',
+  };
+  const cls = map[status] || 'bg-border text-[var(--text-muted)] border-border';
   return (
-    <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] tracking-wide uppercase font-medium ${colorClasses}`}>
-      {status === 'completed' ? 'COMPLETED' : status === 'occupied' ? 'ACTIVE' : status.toUpperCase()}
+    <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] tracking-wide uppercase font-semibold border ${cls}`}>
+      {label[status] ?? status?.toUpperCase()}
     </span>
   );
 }

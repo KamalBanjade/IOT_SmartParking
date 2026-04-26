@@ -1,62 +1,66 @@
 import React from 'react';
 import { useParking } from '../../context/ParkingContext';
 import { Link } from 'react-router-dom';
-import { X } from 'lucide-react';
+import { X, ExternalLink, Star, ShieldCheck } from 'lucide-react';
 
 export default function UserCard() {
   const { scannedUser, setScannedUser } = useParking();
 
-  if (!scannedUser) return null;
+  if (!scannedUser) {
+    return (
+      <div className="p-8 text-center glass rounded-2xl border border-border border-dashed">
+        <p className="text-xs text-[var(--text-muted)] italic">No member scanned yet</p>
+      </div>
+    );
+  }
 
   const { user, pointsSummary } = scannedUser;
 
   return (
-    <div>
-      <h3 className="text-[10px] uppercase tracking-widest text-text-muted px-5 py-3 border-b border-bg-border flex justify-between items-center">
-        <span>Scanned Member</span>
-        <button onClick={() => setScannedUser(null)} className="text-text-muted hover:text-text-primary">
+    <div className="glass rounded-2xl border border-border overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+      <div className="px-5 py-3 border-b border-border flex justify-between items-center bg-elevated/30">
+        <span className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-bold">Scanned Member</span>
+        <button 
+          onClick={() => setScannedUser(null)} 
+          className="p-1 rounded-lg hover:bg-elevated text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+        >
           <X className="w-3.5 h-3.5" />
         </button>
-      </h3>
-      <div className="p-5">
-        <div className="mb-4">
-          <h4 className="text-base font-semibold text-text-primary">{user.name}</h4>
-          <p className="text-xs text-text-secondary mt-1">{user.phone}</p>
-        </div>
-        
-        <div className="py-4 border-t border-b border-bg-border mb-4">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xl font-bold text-text-primary">
-              <span className="text-amber-400 mr-1.5">★</span>
-              {pointsSummary?.total || 0}
-            </span>
-            {pointsSummary?.discountAvailable && (
-              <span className="bg-green-400/10 text-green-400 text-[10px] px-2 py-0.5 rounded-full font-medium">
-                ✓ Discount available
-              </span>
-            )}
-          </div>
-          
-          <div className="w-full">
-            <div className="h-1.5 bg-[#222222] rounded-full overflow-hidden mb-1.5">
-              <div 
-                className="h-full bg-accent transition-all duration-500" 
-                style={{ width: `${pointsSummary?.progress || 0}%` }}
-              ></div>
-            </div>
-            <p className="text-[10px] text-text-muted flex justify-between">
-              <span>Progress: {pointsSummary?.progress || 0}%</span>
-              <span>{Math.max(0, 50 - ((pointsSummary?.total || 0) % 50))} pts to reward</span>
-            </p>
-          </div>
-        </div>
+      </div>
 
+      <div className="p-5 flex items-center gap-4">
+        <div className="w-12 h-12 rounded-xl bg-accent/20 border border-accent/30 flex items-center justify-center text-xl font-bold text-accent flex-shrink-0">
+          {user.name.charAt(0).toUpperCase()}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <h4 className="text-sm font-bold text-[var(--text-primary)] truncate">{user.name}</h4>
+            <ShieldCheck className="w-3 h-3 text-customer" />
+          </div>
+          <p className="text-xs text-[var(--text-secondary)]">{user.phone}</p>
+        </div>
         <Link 
-          to={`/member/${user.id}`}
-          className="w-full h-8 flex items-center justify-center border border-bg-border hover:border-accent text-text-secondary hover:text-text-primary text-xs font-medium rounded transition-colors"
+          to={`/member/${user.id}`} 
+          className="p-2 rounded-xl border border-border text-[var(--text-muted)] hover:text-accent hover:border-accent/30 transition-all"
+          title="View Profile"
         >
-          View Profile
+          <ExternalLink className="w-4 h-4" />
         </Link>
+      </div>
+
+      <div className="px-5 py-4 bg-elevated/20 border-t border-border flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Star className="w-4 h-4 text-pending fill-pending" />
+          <div>
+            <p className="text-xs font-bold text-[var(--text-primary)] leading-none">{pointsSummary?.total ?? 0}</p>
+            <p className="text-[9px] text-[var(--text-muted)] uppercase tracking-wide mt-0.5">Points</p>
+          </div>
+        </div>
+        {pointsSummary?.discountAvailable && (
+          <span className="text-[10px] px-2 py-0.5 rounded-full bg-available/10 text-available border border-available/20 font-bold uppercase tracking-wide animate-pulse">
+            Reward Ready
+          </span>
+        )}
       </div>
     </div>
   );

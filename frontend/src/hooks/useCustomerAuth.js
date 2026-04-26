@@ -30,7 +30,7 @@ export function useCustomerAuth() {
   const logout = () => {
     localStorage.removeItem('customerToken');
     setCustomer(null);
-    navigate('/portal/login');
+    navigate('/login/customer');
   };
 
   return { 

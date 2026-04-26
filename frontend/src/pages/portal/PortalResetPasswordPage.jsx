@@ -1,111 +1,132 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { authApi } from '../../services/api';
 import toast from 'react-hot-toast';
+import { Lock, ArrowRight, Loader2, Car, ChevronLeft, ShieldCheck, Eye, EyeOff, CheckCircle2 } from 'lucide-react';
 
 export default function PortalResetPasswordPage() {
-  const [searchParams] = useSearchParams();
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-
   const token = searchParams.get('token');
-  const type = searchParams.get('type'); // 'setup' for first time
 
-  const isSetup = type === 'setup';
-
-  useEffect(() => {
-    if (!token) {
-      toast.error('Missing reset token');
-      navigate('/portal/login');
-    }
-  }, [token, navigate]);
+  const isPasswordValid = password.length >= 6;
+  const passwordsMatch = password === confirmPassword && confirmPassword !== '';
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (password !== confirmPassword) return toast.error('Passwords do not match');
-    if (password.length < 8) return toast.error('Password must be at least 8 characters');
+    if (password !== confirmPassword) return toast.error("Passwords don't match");
+    if (password.length < 6) return toast.error("Password must be at least 6 characters");
 
     setLoading(true);
     try {
       await authApi.resetCustomerPassword({ token, password });
-      setSuccess(true);
-      toast.success('Password updated successfully!');
+      toast.success('Security credentials updated. You can now enter the portal.');
+      navigate('/login/customer');
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed to reset password');
-    } finally {
-      setLoading(false);
-    }
+      toast.error(err.response?.data?.error || 'Failed to update credentials.');
+    } finally { setLoading(false); }
   };
 
-  if (success) {
-    return (
-      <div className="min-h-screen bg-bg-base flex items-center justify-center p-4">
-        <div className="w-full max-w-md bg-bg-surface border border-bg-border rounded-xl p-8 text-center shadow-xl">
-          <div className="w-16 h-16 bg-status-available/10 text-status-available rounded-full flex items-center justify-center mx-auto mb-6">
-            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-          </div>
-          <h2 className="text-xl font-bold text-text-primary mb-2">Password Updated</h2>
-          <p className="text-text-secondary text-sm mb-8">
-            Your password has been successfully {isSetup ? 'set' : 'reset'}. You can now log in to your portal.
-          </p>
-          <Link 
-            to="/portal/login" 
-            className="w-full inline-block py-2.5 bg-text-primary text-bg-base rounded-lg font-medium hover:bg-text-secondary transition-colors"
-          >
-            Login to Portal
-          </Link>
-        </div>
-      </div>
-    );
-  }
+  const inputCls = (isValid) => `w-full bg-white/[0.03] border ${isValid ? 'border-customer/40' : 'border-white/10'} rounded-2xl h-14 px-6 text-sm text-white font-medium placeholder:text-white/20 focus:border-customer/40 focus:ring-4 focus:ring-customer/5 focus:outline-none transition-all duration-300`;
 
   return (
-    <div className="min-h-screen bg-bg-base flex items-center justify-center p-4">
-      <div className="w-full max-w-md bg-bg-surface border border-bg-border rounded-xl p-8 shadow-xl">
-        <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-text-primary">
-            {isSetup ? 'Welcome to Smart Parking' : 'Reset Password'}
-          </h1>
-          <p className="text-text-muted mt-2 text-sm">
-            {isSetup ? 'Please set your first password to access your portal' : 'Enter your new password below'}
-          </p>
-        </div>
+    <div className="min-h-screen flex items-center justify-center p-6 bg-[#08080c] relative overflow-hidden">
+      {/* Reference Project Background Style */}
+      <div className="absolute inset-0 bg-medical-gradient pointer-events-none" />
+      <div className="absolute inset-0 bg-medical-pattern pointer-events-none" />
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-1">New Password</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              className="w-full px-4 py-2 bg-bg-base border border-bg-border rounded-lg text-text-primary focus:outline-none focus:border-accent transition-colors"
-              placeholder="••••••••"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-1">Confirm New Password</label>
-            <input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              required
-              className="w-full px-4 py-2 bg-bg-base border border-bg-border rounded-lg text-text-primary focus:outline-none focus:border-accent transition-colors"
-              placeholder="••••••••"
-            />
-          </div>
+      <div className="w-full max-w-[500px] relative z-10 animate-in fade-in slide-in-from-bottom-8 duration-1000 ease-out">
+        <div className="glass-morphism rounded-[48px] p-12 md:p-14 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.6)] border border-white/5 bg-[#0c0c12]/95 backdrop-blur-3xl">
           
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-2.5 bg-text-primary text-bg-base rounded-lg font-medium hover:bg-text-secondary transition-colors disabled:opacity-50"
-          >
-            {loading ? 'Updating...' : isSetup ? 'Set Password' : 'Reset Password'}
-          </button>
-        </form>
+          <div className="text-center space-y-8 mb-12">
+            <div className="relative inline-block">
+              <div className="absolute inset-0 bg-customer/20 blur-3xl rounded-full scale-150 opacity-50" />
+              <div className="relative w-24 h-24 bg-gradient-to-b from-white/10 to-transparent border border-white/10 rounded-[32px] flex items-center justify-center shadow-2xl mx-auto transition-transform duration-500 hover:scale-105">
+                <Car className="w-12 h-12 text-customer drop-shadow-[0_0_15px_rgba(16,185,129,0.6)]" />
+              </div>
+            </div>
+            <div className="space-y-3">
+              <h1 className="text-4xl font-black text-white tracking-tight leading-none">
+                Update Password
+              </h1>
+              <p className="text-[12px] font-bold text-white/30 uppercase tracking-[0.4em]">
+                Secure Credentials Reset
+              </p>
+            </div>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-10">
+            <div className="space-y-6">
+              <div className="group space-y-4">
+                <div className="flex justify-between items-center px-1">
+                  <label className="text-[11px] font-black text-white/40 uppercase tracking-[0.2em]">
+                    New Password <span className="text-rose-500 ml-0.5">*</span>
+                  </label>
+                  {isPasswordValid && <CheckCircle2 className="w-4 h-4 text-customer animate-in zoom-in" />}
+                </div>
+                <div className="relative">
+                  <input 
+                    type={showPassword ? "text" : "password"} 
+                    value={password} 
+                    onChange={e => setPassword(e.target.value)} 
+                    required 
+                    className={inputCls(isPasswordValid)} 
+                    placeholder="••••••••" 
+                  />
+                  <button 
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-6 top-1/2 -translate-y-1/2 text-white/20 hover:text-white transition-colors p-1"
+                  >
+                    {showPassword ? <EyeOff className="w-4.5 h-4.5" /> : <Eye className="w-4.5 h-4.5" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="group space-y-4">
+                <div className="flex justify-between items-center px-1">
+                  <label className="text-[11px] font-black text-white/40 uppercase tracking-[0.2em]">
+                    Confirm Password <span className="text-rose-500 ml-0.5">*</span>
+                  </label>
+                  {passwordsMatch && <CheckCircle2 className="w-4 h-4 text-customer animate-in zoom-in" />}
+                </div>
+                <div className="relative">
+                  <input 
+                    type="password" 
+                    value={confirmPassword} 
+                    onChange={e => setConfirmPassword(e.target.value)} 
+                    required 
+                    className={inputCls(passwordsMatch)} 
+                    placeholder="••••••••" 
+                  />
+                  <ShieldCheck className={`absolute right-6 top-1/2 -translate-y-1/2 w-4.5 h-4.5 transition-colors duration-300 ${passwordsMatch ? 'text-customer' : 'text-white/20'}`} />
+                </div>
+              </div>
+            </div>
+
+            <button type="submit" disabled={loading}
+              className="group relative w-full h-16 bg-customer hover:bg-emerald-400 text-[#0f1419] font-black uppercase tracking-widest text-xs rounded-2xl transition-all duration-500 shadow-[0_20px_40px_-8px_rgba(16,185,129,0.3)] active:scale-[0.98] flex items-center justify-center gap-3 overflow-hidden border border-white/10">
+              <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
+              {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : (
+                <>
+                  Update & Authorize
+                  <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1.5" />
+                </>
+              )}
+            </button>
+          </form>
+
+          <div className="mt-12 pt-10 border-t border-white/5 text-center">
+            <Link to="/login/customer" className="inline-flex items-center gap-3 text-[11px] font-black text-white/20 uppercase tracking-[0.3em] hover:text-white transition-all duration-300">
+              <ChevronLeft className="w-4 h-4" />
+              Back to Member Login
+            </Link>
+          </div>
+        </div>
       </div>
     </div>
   );

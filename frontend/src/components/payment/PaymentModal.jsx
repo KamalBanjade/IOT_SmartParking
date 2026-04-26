@@ -1,32 +1,63 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParking } from '../../context/ParkingContext';
 import { sessionsApi, paymentsApi, usersApi } from '../../services/api';
 import toast from 'react-hot-toast';
 import { differenceInMinutes, differenceInHours } from 'date-fns';
-import { X, CheckCircle } from 'lucide-react';
+import { X, CheckCircle, Loader2 } from 'lucide-react';
+import { QRCodeCanvas } from 'qrcode.react';
 
 export default function PaymentModal() {
-  const { activeModal, closeModal, selectedSlot, scannedUser, setScannedUser } = useParking();
+  const { activeModal, closeModal, selectedSlot, scannedUser, setScannedUser, socket } = useParking();
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
   const [method, setMethod] = useState('cash');
   const [applyDiscount, setApplyDiscount] = useState(true);
+  
+  // Khalti QR states
+  const [khaltiQrUrl, setKhaltiQrUrl] = useState(null);
+  const [khaltiPaymentId, setKhaltiPaymentId] = useState(null);
+  const [qrStatus, setQrStatus] = useState('idle'); // idle | loading | showing | confirmed | expired | error
+  const [qrTimeLeft, setQrTimeLeft] = useState(300); // 5 min expiry
+  
+  const pollingRef = useRef(null);
+  const timerRef = useRef(null);
+  
   const [successData, setSuccessData] = useState(null);
 
   useEffect(() => {
     if (activeModal === 'payment' && selectedSlot) {
       setLoading(true);
       setSuccessData(null);
+      setQrStatus('idle');
+      setKhaltiQrUrl(null);
+      setKhaltiPaymentId(null);
+      
       sessionsApi.getBySlot(selectedSlot.id)
-        .then(res => setSession(res.data))
-        .catch(err => {
-          console.error(err);
-          toast.error("Could not fetch active session");
-          closeModal();
+        .then(async (res) => {
+          const sessionData = res.data;
+          setSession(sessionData);
+          
+          if (sessionData.user_id && !scannedUser) {
+            try {
+              const userRes = await usersApi.getById(sessionData.user_id);
+              const pointsRes = await usersApi.getPointsSummary(sessionData.user_id);
+              setScannedUser({
+                user: userRes.data,
+                pointsSummary: pointsRes.data
+              });
+            } catch (err) {
+              console.error("Failed to fetch user data for session:", err);
+            }
+          }
+          
+          setLoading(false);
         })
-        .finally(() => setLoading(false));
+        .catch(err => {
+          toast.error("Failed to load session data");
+          closeModal();
+        });
     }
-  }, [activeModal, selectedSlot, closeModal]);
+  }, [activeModal, selectedSlot, closeModal, scannedUser, setScannedUser]);
 
   useEffect(() => {
     const handleEsc = (e) => {
@@ -36,16 +67,106 @@ export default function PaymentModal() {
     return () => window.removeEventListener('keydown', handleEsc);
   }, [activeModal, closeModal]);
 
+  // Socket listener for payment confirmation
+  useEffect(() => {
+    if (!socket || !khaltiPaymentId) return;
+
+    const handlePaymentConfirmed = (data) => {
+      if (data.paymentId === khaltiPaymentId) {
+        onPaymentConfirmed(data);
+      }
+    };
+
+    socket.on('paymentConfirmed', handlePaymentConfirmed);
+    return () => {
+      socket.off('paymentConfirmed', handlePaymentConfirmed);
+    };
+  }, [socket, khaltiPaymentId]);
+
+  // Cleanup polling and timers on unmount
+  useEffect(() => {
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, []);
+
   if (activeModal !== 'payment' || !selectedSlot) return null;
+
+  const onPaymentConfirmed = (data) => {
+    if (pollingRef.current) clearInterval(pollingRef.current);
+    if (timerRef.current) clearInterval(timerRef.current);
+
+    setQrStatus('confirmed');
+    setSuccessData({
+      amountReceived: data.amount,
+      method: data.method,
+      pointsEarned: data.pointsAwarded || 0,
+      newBalance: scannedUser ? (scannedUser.pointsSummary.total - (applyDiscount ? 50 : 0) + (data.pointsAwarded || 0)) : 0
+    });
+
+    setTimeout(() => {
+      setScannedUser(null);
+      closeModal();
+    }, 4000);
+  };
+
+  const handleKhaltiClick = async (pendingPayment) => {
+    try {
+      setQrStatus('loading');
+
+      const res = await paymentsApi.initiateKhalti(pendingPayment.id);
+      const { paymentUrl, pidx } = res.data;
+
+      setKhaltiQrUrl(paymentUrl);
+      setKhaltiPaymentId(pendingPayment.id);
+      setQrStatus('showing');
+      setQrTimeLeft(300);
+
+      // Start countdown timer
+      timerRef.current = setInterval(() => {
+        setQrTimeLeft(prev => {
+          if (prev <= 1) {
+            clearInterval(timerRef.current);
+            if (pollingRef.current) clearInterval(pollingRef.current);
+            setQrStatus('expired');
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+
+      // Start polling
+      pollingRef.current = setInterval(async () => {
+        try {
+          const statusRes = await paymentsApi.getStatus(pendingPayment.id);
+          if (statusRes.data.status === 'paid') {
+            onPaymentConfirmed({
+              paymentId: pendingPayment.id,
+              amount: statusRes.data.amount,
+              method: 'khalti',
+              pointsAwarded: Math.floor(statusRes.data.amount / 10), // Assuming standard points rule
+              memberName: scannedUser?.user?.name || null
+            });
+          }
+        } catch (err) {
+          // Ignore polling errors
+        }
+      }, 3000);
+
+    } catch (err) {
+      setQrStatus('error');
+      toast.error('Failed to initiate Khalti payment');
+    }
+  };
 
   const handleManualExitAndPay = async () => {
     try {
-      // 1. Exit session to calculate final amount
+      setLoading(true);
       const exitRes = await sessionsApi.exit({ slotId: selectedSlot.id });
       const { payment: pendingPayment } = exitRes.data;
       
       let discountAmount = 0;
-      // 2. Apply discount if requested and available
       if (scannedUser?.pointsSummary?.discountAvailable && applyDiscount) {
         const discountRes = await usersApi.applyDiscount(scannedUser.user.id, selectedSlot.id);
         discountAmount = discountRes.data.discountAmount;
@@ -53,24 +174,12 @@ export default function PaymentModal() {
       }
       
       if (method === 'khalti') {
-        setLoading(true);
-        toast.loading("Redirecting to Khalti...");
-        
-        // Store info for success page
-        localStorage.setItem('pendingPayment', JSON.stringify({
-          paymentId: pendingPayment.id,
-          slotLabel: selectedSlot.label,
-          amount: pendingPayment.amount - discountAmount,
-          memberName: scannedUser?.user?.name || null,
-          appliedDiscount: discountAmount
-        }));
-        
-        const res = await paymentsApi.initiateKhalti(pendingPayment.id);
-        window.location.href = res.data.paymentUrl;
+        setLoading(false);
+        handleKhaltiClick(pendingPayment);
         return;
       }
 
-      // 3. Process Cash Payment
+      // Process Cash Payment
       const payRes = await paymentsApi.pay(pendingPayment.id, method, discountAmount);
       
       setSuccessData({
@@ -86,7 +195,6 @@ export default function PaymentModal() {
       }, 4000);
 
     } catch (err) {
-      toast.dismiss();
       toast.error(err.response?.data?.error || "Payment processing failed");
       setLoading(false);
     }
@@ -116,7 +224,8 @@ export default function PaymentModal() {
   const discountAvailable = scannedUser?.pointsSummary?.discountAvailable;
   const finalAmount = Math.max(0, originalAmount - (discountAvailable && applyDiscount ? 25 : 0));
 
-  if (successData) {
+  if (successData || qrStatus === 'confirmed') {
+    const dataToShow = successData || { amountReceived: finalAmount, method: 'khalti', pointsEarned: 0 };
     return (
       <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
         <div className="bg-bg-surface border border-bg-border rounded-2xl max-w-sm w-full p-6 relative shadow-2xl text-center">
@@ -125,20 +234,28 @@ export default function PaymentModal() {
           </div>
           <h2 className="text-lg font-semibold text-text-primary mb-2">Payment Complete</h2>
           <p className="text-sm text-text-secondary mb-6">
-            NPR {successData.amountReceived} received &middot; {successData.method.charAt(0).toUpperCase() + successData.method.slice(1)}
+            NPR {dataToShow.amountReceived} received &middot; {dataToShow.method.charAt(0).toUpperCase() + dataToShow.method.slice(1)}
           </p>
           
           <div className="border-t border-b border-bg-elevated py-4 mb-6">
             <p className="text-base font-bold text-text-primary mb-1">
               <span className="text-amber-400 mr-2">🎉</span>
-              +{successData.pointsEarned} points earned
+              +{dataToShow.pointsEarned} points earned
             </p>
-            {scannedUser && (
+            {dataToShow.newBalance !== undefined && (
               <p className="text-xs text-text-muted">
-                New balance: {successData.newBalance} points
+                New balance: {dataToShow.newBalance} points
               </p>
             )}
           </div>
+          
+          {dataToShow.method === 'khalti' && (
+            <div className="mb-4">
+              <span className="inline-block px-3 py-1 bg-status-available/10 text-status-available text-xs font-semibold rounded-full">
+                ✓ Paid via Khalti
+              </span>
+            </div>
+          )}
           
           <button 
             onClick={handleDone}
@@ -150,6 +267,99 @@ export default function PaymentModal() {
       </div>
     );
   }
+
+  const renderKhaltiQrState = () => {
+    if (qrStatus === 'loading') {
+      return (
+        <div className="flex flex-col items-center justify-center py-10 space-y-4">
+          <Loader2 className="w-8 h-8 text-accent animate-spin" />
+          <p className="text-sm text-text-secondary">Generating payment QR...</p>
+        </div>
+      );
+    }
+    
+    if (qrStatus === 'showing') {
+      const mins = Math.floor(qrTimeLeft / 60);
+      const secs = qrTimeLeft % 60;
+      const timeString = `${mins}:${secs.toString().padStart(2, '0')}`;
+      
+      return (
+        <div className="flex flex-col items-center text-center space-y-4 py-4">
+          <p className="text-sm font-medium text-text-primary">Scan to Pay with Khalti</p>
+          
+          <div className="bg-white p-3 rounded-xl inline-block shadow-sm">
+            <QRCodeCanvas value={khaltiQrUrl} size={200} level="M" includeMargin={false} />
+          </div>
+          
+          <div>
+            <p className="text-xs text-text-secondary">Open Khalti app &rarr; Scan &amp; Pay</p>
+            <p className="text-lg font-bold text-text-primary mt-1">Amount: NPR {finalAmount}</p>
+          </div>
+          
+          <div className="flex flex-col items-center gap-1">
+            <p className="text-xs text-text-muted font-mono">⏱ Expires in {timeString}</p>
+            <div className="flex items-center gap-1.5 mt-2">
+              <div className="w-2 h-2 rounded-full bg-status-available animate-pulse"></div>
+              <p className="text-xs text-text-muted">Waiting for payment...</p>
+            </div>
+          </div>
+          
+          <button 
+            onClick={() => {
+              if (timerRef.current) clearInterval(timerRef.current);
+              if (pollingRef.current) clearInterval(pollingRef.current);
+              setQrStatus('idle');
+            }}
+            className="text-xs text-text-secondary hover:text-text-primary underline mt-2"
+          >
+            &larr; Change Method
+          </button>
+        </div>
+      );
+    }
+
+    if (qrStatus === 'expired') {
+      return (
+        <div className="flex flex-col items-center justify-center py-10 space-y-4">
+          <div className="w-[200px] h-[200px] bg-bg-elevated rounded-xl flex flex-col items-center justify-center">
+            <p className="text-sm text-text-muted mb-2">QR Expired</p>
+          </div>
+          <div className="flex gap-3">
+            <button 
+              onClick={() => {
+                setQrStatus('idle');
+              }}
+              className="text-xs text-text-secondary hover:text-text-primary border border-bg-border px-3 py-1.5 rounded-lg"
+            >
+              Cancel
+            </button>
+            <button 
+              onClick={() => handleManualExitAndPay()}
+              className="text-xs text-white bg-accent hover:bg-blue-600 px-3 py-1.5 rounded-lg"
+            >
+              Generate New QR
+            </button>
+          </div>
+        </div>
+      );
+    }
+    
+    if (qrStatus === 'error') {
+      return (
+        <div className="flex flex-col items-center justify-center py-10 space-y-4">
+          <p className="text-sm text-status-occupied">Failed to generate QR</p>
+          <button 
+            onClick={() => setQrStatus('idle')}
+            className="text-xs text-text-secondary border border-bg-border px-3 py-1.5 rounded-lg"
+          >
+            Try Again
+          </button>
+        </div>
+      );
+    }
+    
+    return null;
+  };
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
@@ -166,9 +376,11 @@ export default function PaymentModal() {
         </div>
 
         {loading ? (
-          <div className="py-8 text-center text-text-muted text-sm">Loading session...</div>
+          <div className="py-8 text-center text-text-muted text-sm">Processing session...</div>
         ) : !session ? (
           <div className="py-8 text-center text-status-occupied text-sm">No active session found.</div>
+        ) : qrStatus !== 'idle' ? (
+          renderKhaltiQrState()
         ) : (
           <div className="space-y-6">
             
@@ -228,7 +440,7 @@ export default function PaymentModal() {
               disabled={loading}
               className="w-full h-10 bg-accent hover:bg-blue-600 text-white text-sm font-medium rounded-lg transition-colors duration-150 disabled:opacity-50"
             >
-              {loading ? 'Processing...' : (method === 'khalti' ? 'Pay with Khalti' : 'Confirm Payment')}
+              {method === 'khalti' ? 'Generate QR' : 'Confirm Payment'}
             </button>
           </div>
         )}

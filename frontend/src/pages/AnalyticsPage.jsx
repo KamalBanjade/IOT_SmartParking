@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import Navbar from '../components/shared/Navbar';
+import SidebarLayout from '../components/shared/SidebarLayout';
 import { adminApi } from '../services/api';
-import { format, subDays, eachDayOfInterval } from 'date-fns';
+import { format } from 'date-fns';
 
 export default function AnalyticsPage() {
   const [period, setPeriod] = useState('7d');
@@ -25,258 +25,174 @@ export default function AnalyticsPage() {
         setPeakHoursData(peak.data);
         setSlotPerformance(slot.data);
         setMemberStats(mem.data);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
+      } catch (err) { console.error(err); }
+      finally { setLoading(false); }
     };
     fetchData();
   }, [period]);
 
-  const renderRevenueChart = () => {
-    if (revenueData.length === 0) return <EmptyState />;
-    
-    const width = 600;
-    const height = 200;
-    const padding = 30;
-    const chartWidth = width - padding * 2;
-    const chartHeight = height - padding * 2;
-
-    const maxRevenue = Math.max(...revenueData.map(d => parseFloat(d.revenue)), 100);
-    
-    const points = revenueData.map((d, i) => {
-      const x = padding + (i * (chartWidth / (revenueData.length - 1 || 1)));
-      const y = height - padding - (parseFloat(d.revenue) / maxRevenue * chartHeight);
-      return { x, y, ...d };
-    });
-
-    const pathData = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
-    const areaData = `${pathData} L ${points[points.length - 1].x} ${height - padding} L ${points[0].x} ${height - padding} Z`;
-
+  const renderRevenue = () => {
+    if (!revenueData.length) return <EmptyChart />;
+    const width = 600, height = 180, pad = 40;
+    const maxRev = Math.max(...revenueData.map(d => parseFloat(d.revenue) || 0), 1);
+    const pts = revenueData.map((d, i) => ({
+      x: pad + (i * ((width - pad * 2) / Math.max(revenueData.length - 1, 1))),
+      y: height - pad - ((parseFloat(d.revenue) || 0) / maxRev * (height - pad * 2)),
+      ...d
+    }));
+    const linePath = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+    const areaPath = `${linePath} L ${pts[pts.length - 1].x} ${height - pad} L ${pts[0].x} ${height - pad} Z`;
     return (
-      <div className="relative group">
-        <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto">
-          {/* Grid lines */}
-          {[0, 0.25, 0.5, 0.75, 1].map(v => (
-            <line 
-              key={v}
-              x1={padding} 
-              y1={height - padding - (v * chartHeight)} 
-              x2={width - padding} 
-              y2={height - padding - (v * chartHeight)} 
-              stroke="#222222" 
-              strokeDasharray="4"
-            />
-          ))}
-          
-          {/* Area fill */}
-          <path d={areaData} fill="#3b82f6" fillOpacity="0.08" />
-          
-          {/* Line */}
-          <path d={pathData} stroke="#3b82f6" strokeWidth="2" fill="none" />
-          
-          {/* Dots */}
-          {points.map((p, i) => (
-            <circle 
-              key={i} 
-              cx={p.x} 
-              cy={p.y} 
-              r="3" 
-              fill="#3b82f6"
-              className="cursor-pointer hover:r-5 transition-all"
-            />
-          ))}
-        </svg>
-      </div>
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto" preserveAspectRatio="xMidYMid meet">
+        {[0, 0.25, 0.5, 0.75, 1].map(v => (
+          <line key={v} x1={pad} y1={height - pad - v * (height - pad * 2)} x2={width - pad} y2={height - pad - v * (height - pad * 2)} stroke="var(--bg-border)" strokeDasharray="4" />
+        ))}
+        <defs>
+          <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#6366f1" stopOpacity="0.3" />
+            <stop offset="100%" stopColor="#6366f1" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <path d={areaPath} fill="url(#areaGrad)" />
+        <path d={linePath} stroke="#6366f1" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+        {pts.map((p, i) => (
+          <circle key={i} cx={p.x} cy={p.y} r="3" fill="#6366f1" />
+        ))}
+      </svg>
     );
   };
 
-  const renderPeakHoursChart = () => {
-    if (peakHoursData.length === 0) return <EmptyState />;
-
-    const width = 600;
-    const height = 200;
-    const padding = 30;
-    const barWidth = (width - padding * 2) / 24;
-
-    const getColor = (val) => {
-      if (val < 0.4) return '#22c55e';
-      if (val < 0.7) return '#f59e0b';
-      return '#ef4444';
-    };
-
+  const renderPeakHours = () => {
+    if (!peakHoursData.length) return <EmptyChart />;
+    const width = 600, height = 180, pad = 30;
+    const barW = (width - pad * 2) / 24;
+    const getColor = v => v < 0.4 ? '#22c55e' : v < 0.7 ? '#f59e0b' : '#ef4444';
     return (
-      <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto">
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto" preserveAspectRatio="xMidYMid meet">
         {peakHoursData.map((d, i) => {
-          const h = parseFloat(d.avgoccupancy) * (height - padding * 2);
-          const x = padding + (parseInt(d.hour) * barWidth) + 2;
-          return (
-            <rect 
-              key={i}
-              x={x}
-              y={height - padding - h}
-              width={barWidth - 4}
-              height={h}
-              fill={getColor(parseFloat(d.avgoccupancy))}
-              rx="2"
-            />
-          );
+          const h = parseFloat(d.avgoccupancy) * (height - pad * 2);
+          const x = pad + parseInt(d.hour) * barW + 2;
+          return <rect key={i} x={x} y={height - pad - h} width={barW - 4} height={h} fill={getColor(parseFloat(d.avgoccupancy))} rx="2" />;
         })}
-        {/* Labels */}
         {[0, 6, 12, 18, 23].map(h => (
-          <text 
-            key={h}
-            x={padding + (h * barWidth) + barWidth/2}
-            y={height - 10}
-            fill="#525252"
-            fontSize="10"
-            textAnchor="middle"
-          >
-            {h === 0 ? '12am' : h === 12 ? '12pm' : h > 12 ? `${h-12}pm` : `${h}am`}
+          <text key={h} x={pad + h * barW + barW / 2} y={height - 8} fill="var(--text-muted)" fontSize="10" textAnchor="middle">
+            {h === 0 ? '12am' : h === 12 ? '12pm' : h > 12 ? `${h - 12}pm` : `${h}am`}
           </text>
         ))}
       </svg>
     );
   };
 
-  if (loading && !memberStats) return <Loading />;
+  if (loading && !memberStats) {
+    return (
+      <SidebarLayout>
+        <div className="flex items-center justify-center h-full min-h-screen">
+          <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+        </div>
+      </SidebarLayout>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-bg-base flex flex-col">
-      <Navbar />
-      
-      <main className="flex-grow max-w-7xl w-full mx-auto p-6">
-        <div className="flex justify-between items-center mb-8">
+    <SidebarLayout>
+      <div className="p-6 lg:p-8 space-y-6">
+        {/* Header */}
+        <div className="flex items-start justify-between">
           <div>
-            <h1 className="text-xl font-bold text-text-primary">System Analytics</h1>
-            <p className="text-sm text-text-secondary mt-1">Deep dive into revenue, occupancy, and member behavior.</p>
+            <h1 className="text-2xl font-bold text-[var(--text-primary)]">Analytics</h1>
+            <p className="text-sm text-[var(--text-secondary)] mt-0.5">Revenue trends, peak hours, and member behavior.</p>
           </div>
-          
-          <div className="flex bg-bg-surface border border-bg-border p-1 rounded-xl">
+          <div className="flex glass border border-border p-1 rounded-xl gap-1">
             {['7d', '30d', '90d'].map(p => (
-              <button 
-                key={p}
-                onClick={() => setPeriod(p)}
-                className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-colors ${period === p ? 'bg-bg-elevated text-text-primary shadow-sm' : 'text-text-muted hover:text-text-secondary'}`}
-              >
+              <button key={p} onClick={() => setPeriod(p)}
+                className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-colors ${period === p ? 'bg-accent text-white' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}>
                 {p === '7d' ? '7 Days' : p === '30d' ? '30 Days' : '90 Days'}
               </button>
             ))}
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <StatCard title="Total Members" value={memberStats?.totalmembers} />
-          <StatCard title="Active (Month)" value={memberStats?.activethismonth} />
-          <StatCard title="Points Awarded" value={memberStats?.totalpointsawarded} isPoints />
-          <StatCard title="Discounts Given" value={`NPR ${memberStats?.totaldiscountsgiven}`} />
-        </div>
+        {/* Revenue trend (full width) */}
+        <Card title="Revenue Trend" subtitle={`Last ${period === '7d' ? '7' : period === '30d' ? '30' : '90'} days`}>
+          {renderRevenue()}
+        </Card>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          <ChartContainer title="Revenue Trend">
-            {renderRevenueChart()}
-          </ChartContainer>
-          <ChartContainer title="Peak Occupancy (Hourly Average)">
-            {renderPeakHoursChart()}
-          </ChartContainer>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2">
-            <ChartContainer title="Top Members (by Spending)">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left">
-                  <thead>
-                    <tr className="text-[10px] uppercase tracking-widest text-text-muted">
-                      <th className="pb-4 px-2">Rank</th>
-                      <th className="pb-4">Member</th>
-                      <th className="pb-4">Sessions</th>
-                      <th className="pb-4">Spent</th>
-                      <th className="pb-4">Points</th>
-                    </tr>
-                  </thead>
-                  <tbody className="text-sm">
-                    {memberStats?.topMembers.map((m, i) => (
-                      <tr key={i} className="border-t border-bg-elevated">
-                        <td className={`py-4 px-2 font-bold ${i === 0 ? 'text-amber-400' : 'text-text-muted'}`}>#{i+1}</td>
-                        <td className="py-4">
-                          <div className="font-medium text-text-primary">{m.name}</div>
-                          <div className="text-xs text-text-secondary">{m.phone}</div>
-                        </td>
-                        <td className="py-4 text-text-secondary">{m.totalsessions}</td>
-                        <td className="py-4 text-text-primary font-medium">NPR {m.totalspent}</td>
-                        <td className="py-4 text-amber-400 font-bold">★ {m.points}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </ChartContainer>
-          </div>
-          
-          <div>
-            <ChartContainer title="Slot Utilization">
-              <div className="space-y-6 pt-2">
-                {slotPerformance.map((s, i) => {
-                  const maxSessions = Math.max(...slotPerformance.map(sp => parseInt(sp.totalsessions)), 1);
-                  const rate = (parseInt(s.totalsessions) / maxSessions) * 100;
-                  return (
-                    <div key={i}>
-                      <div className="flex justify-between text-xs mb-2">
-                        <span className="text-text-primary font-medium">Slot {s.label}</span>
-                        <span className="text-text-secondary">{s.totalsessions} sessions</span>
-                      </div>
-                      <div className="h-2 bg-bg-base rounded-full overflow-hidden">
-                        <div 
-                          className="h-full bg-accent transition-all duration-1000" 
-                          style={{ width: `${rate}%` }}
-                        ></div>
-                      </div>
+        {/* Row 2 */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Card title="Peak Occupancy" subtitle="Hourly average">
+            {renderPeakHours()}
+          </Card>
+          <Card title="Slot Utilization">
+            <div className="space-y-4 pt-2">
+              {slotPerformance.map((s, i) => {
+                const maxS = Math.max(...slotPerformance.map(sp => parseInt(sp.totalsessions) || 0), 1);
+                const rate = ((parseInt(s.totalsessions) || 0) / maxS) * 100;
+                return (
+                  <div key={i}>
+                    <div className="flex justify-between text-xs mb-1.5">
+                      <span className="text-[var(--text-primary)] font-medium">Slot {s.label}</span>
+                      <span className="text-[var(--text-secondary)]">{s.totalsessions} sessions</span>
                     </div>
-                  );
-                })}
-              </div>
-            </ChartContainer>
-          </div>
+                    <div className="h-1.5 bg-elevated rounded-full overflow-hidden">
+                      <div className="h-full bg-accent rounded-full transition-all duration-700" style={{ width: `${rate}%` }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
         </div>
-      </main>
-    </div>
+
+        {/* Top Members table (full width) */}
+        <Card title="Top Members" subtitle="By total spending">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="text-[10px] uppercase tracking-widest text-[var(--text-muted)]">
+                  <th className="pb-4 w-10">Rank</th>
+                  <th className="pb-4">Member</th>
+                  <th className="pb-4">Sessions</th>
+                  <th className="pb-4">Spent</th>
+                  <th className="pb-4">Points</th>
+                </tr>
+              </thead>
+              <tbody className="text-sm divide-y divide-border">
+                {(memberStats?.topMembers ?? []).map((m, i) => (
+                  <tr key={i}>
+                    <td className={`py-4 font-bold ${i === 0 ? 'text-pending' : 'text-[var(--text-muted)]'}`}>#{i + 1}</td>
+                    <td className="py-4">
+                      <p className="font-medium text-[var(--text-primary)]">{m.name}</p>
+                      <p className="text-xs text-[var(--text-secondary)]">{m.phone}</p>
+                    </td>
+                    <td className="py-4 text-[var(--text-secondary)]">{m.totalsessions ?? 0}</td>
+                    <td className="py-4 font-semibold text-[var(--text-primary)]">NPR {m.totalspent ?? 0}</td>
+                    <td className="py-4 text-pending font-bold">★ {m.points ?? 0}</td>
+                  </tr>
+                ))}
+                {!memberStats?.topMembers?.length && (
+                  <tr><td colSpan="5" className="py-8 text-center text-sm text-[var(--text-muted)] italic">Not enough data yet</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      </div>
+    </SidebarLayout>
   );
 }
 
-function StatCard({ title, value, isPoints }) {
+function Card({ title, subtitle, children }) {
   return (
-    <div className="bg-bg-surface border border-bg-border rounded-xl p-5">
-      <p className="text-xs text-text-muted uppercase tracking-wider mb-2">{title}</p>
-      <p className={`text-2xl font-bold ${isPoints ? 'text-amber-400' : 'text-text-primary'}`}>
-        {isPoints && '★ '}{value || 0}
-      </p>
-    </div>
-  );
-}
-
-function ChartContainer({ title, children }) {
-  return (
-    <div className="bg-bg-surface border border-bg-border rounded-xl p-6">
-      <h3 className="text-sm font-medium text-text-primary mb-6">{title}</h3>
+    <div className="glass rounded-xl border border-border p-6">
+      <div className="mb-5">
+        <h3 className="text-sm font-semibold text-[var(--text-primary)]">{title}</h3>
+        {subtitle && <p className="text-xs text-[var(--text-muted)] mt-0.5">{subtitle}</p>}
+      </div>
       {children}
     </div>
   );
 }
 
-function EmptyState() {
-  return (
-    <div className="h-[200px] flex items-center justify-center text-sm text-text-muted italic">
-      Not enough data yet
-    </div>
-  );
-}
-
-function Loading() {
-  return (
-    <div className="min-h-screen bg-bg-base flex items-center justify-center">
-      <div className="w-10 h-10 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
-    </div>
-  );
+function EmptyChart() {
+  return <div className="h-44 flex items-center justify-center text-sm text-[var(--text-muted)] italic">Not enough data yet</div>;
 }

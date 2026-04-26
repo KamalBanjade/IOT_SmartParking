@@ -2,6 +2,7 @@ import React from 'react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { usersApi } from '../../services/api';
 import toast from 'react-hot-toast';
+import { Download, RefreshCw, Star, ShieldCheck } from 'lucide-react';
 
 export default function MemberCard({ user, pointsSummary, onQrUpdate }) {
   if (!user || !pointsSummary) return null;
@@ -16,55 +17,92 @@ export default function MemberCard({ user, pointsSummary, onQrUpdate }) {
     }
   };
 
+  const progress = Math.min(100, ((pointsSummary.total % (pointsSummary.nextRewardAt || 50)) / (pointsSummary.nextRewardAt || 50)) * 100);
+  const toNext = (pointsSummary.nextRewardAt || 50) - (pointsSummary.total % (pointsSummary.nextRewardAt || 50));
+
   return (
-    <div className="bg-bg-surface border border-bg-border rounded-xl overflow-hidden">
-      <div className="p-5 border-b border-bg-border">
-        <h2 className="text-xl font-semibold text-text-primary">{user.name}</h2>
-        <p className="text-sm text-text-secondary">{user.phone}</p>
-        <p className="text-xs text-text-muted mt-1">
-          Member since {new Date(user.created_at).toLocaleDateString()}
-        </p>
+    <div className="space-y-6">
+      {/* Profile Header */}
+      <div className="glass rounded-2xl border border-border p-6 flex flex-col items-center text-center">
+        <div className="w-20 h-20 rounded-full bg-accent/20 border border-accent/30 flex items-center justify-center text-3xl font-bold text-accent mb-4">
+          {user.name.charAt(0).toUpperCase()}
+        </div>
+        <h2 className="text-xl font-bold text-[var(--text-primary)]">{user.name}</h2>
+        <p className="text-sm text-[var(--text-secondary)]">{user.phone}</p>
+        {user.email && <p className="text-xs text-[var(--text-muted)] mt-1">{user.email}</p>}
+        
+        <div className="mt-4 flex items-center gap-2 px-3 py-1 bg-customer/10 border border-customer/20 rounded-full">
+          <ShieldCheck className="w-3.5 h-3.5 text-customer" />
+          <span className="text-[10px] font-bold text-customer uppercase tracking-wider">Verified Member</span>
+        </div>
       </div>
 
-      <div className="p-5 flex flex-col items-center border-b border-bg-border bg-bg-elevated/30">
-        <div className="text-center mb-4">
-          <div className="text-3xl font-bold text-text-primary flex items-center justify-center">
-            <span className="text-amber-400 mr-2">★</span>
-            {pointsSummary.total}
-          </div>
-          <span className="text-xs text-text-muted uppercase tracking-widest">points</span>
+      {/* Loyalty Card */}
+      <div className="glass rounded-2xl border border-border p-6 relative overflow-hidden">
+        <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
+          <Star className="w-20 h-20 text-pending" />
+        </div>
+        
+        <div className="flex items-baseline gap-2 mb-4">
+          <Star className="w-5 h-5 text-pending fill-pending" />
+          <span className="text-3xl font-bold text-[var(--text-primary)] font-mono">{pointsSummary.total}</span>
+          <span className="text-xs text-[var(--text-muted)] uppercase tracking-widest">Points</span>
         </div>
 
-        <div className="w-full">
-          <div className="h-1.5 bg-[#222222] rounded-full overflow-hidden mb-1.5">
+        <div className="space-y-2">
+          <div className="h-2 bg-elevated rounded-full overflow-hidden">
             <div 
-              className="h-full bg-accent transition-all duration-500" 
-              style={{ width: `${pointsSummary.progress}%` }}
-            ></div>
+              className="h-full bg-accent rounded-full transition-all duration-700" 
+              style={{ width: `${progress}%` }} 
+            />
           </div>
-          <p className="text-[10px] text-text-muted text-center">
-            {pointsSummary.nextRewardAt - (pointsSummary.total % pointsSummary.nextRewardAt)} points to next reward (50pts = NPR 25 off)
-          </p>
+          <div className="flex justify-between text-[10px] text-[var(--text-muted)]">
+            <span>{pointsSummary.total % (pointsSummary.nextRewardAt || 50)} / {pointsSummary.nextRewardAt || 50} pts</span>
+            <span>{toNext} more to next reward</span>
+          </div>
         </div>
-      </div>
 
-      <div className="p-5 flex flex-col items-center">
-        {user.qr_token ? (
-          <div className="bg-white p-3 rounded-lg mb-4">
-            <QRCodeCanvas value={user.qr_token} size={150} level="H" />
-          </div>
-        ) : (
-          <div className="w-[150px] h-[150px] border border-bg-border border-dashed rounded-lg flex items-center justify-center text-text-muted mb-4">
-            No QR
+        {pointsSummary.discountAvailable && (
+          <div className="mt-6 p-4 bg-available/10 border border-available/20 rounded-xl">
+            <p className="text-xs font-semibold text-available">🎉 Reward Available!</p>
+            <p className="text-[10px] text-available/80 mt-1">This member is eligible for a discount on their next session.</p>
           </div>
         )}
+      </div>
+
+      {/* QR Code Pass */}
+      <div className="glass rounded-2xl border border-border p-6 flex flex-col items-center">
+        <p className="text-[10px] text-[var(--text-muted)] uppercase tracking-widest mb-6 self-start">Member Parking Pass</p>
         
-        <button 
-          onClick={handleRegenerate}
-          className="w-full h-8 border border-bg-border hover:border-accent text-text-secondary hover:text-text-primary text-xs font-medium rounded transition-colors"
-        >
-          Regenerate QR
-        </button>
+        <div className="bg-white p-4 rounded-2xl shadow-xl shadow-black/20 mb-6">
+          <QRCodeCanvas 
+            value={user.qr_token} 
+            size={160} 
+            level="H" 
+            id="member-qr"
+          />
+        </div>
+
+        <div className="flex gap-4 w-full">
+          <button 
+            onClick={() => {
+              const canvas = document.getElementById('member-qr');
+              const link = document.createElement('a');
+              link.download = `${user.name}-qr.png`;
+              link.href = canvas.toDataURL();
+              link.click();
+            }}
+            className="flex-1 flex items-center justify-center gap-2 h-10 rounded-xl bg-elevated border border-border text-sm font-semibold text-[var(--text-primary)] hover:bg-border transition-colors"
+          >
+            <Download className="w-4 h-4" /> Download
+          </button>
+          <button 
+            onClick={handleRegenerate}
+            className="flex-1 flex items-center justify-center gap-2 h-10 rounded-xl bg-elevated border border-border text-sm font-semibold text-[var(--text-primary)] hover:bg-border transition-colors"
+          >
+            <RefreshCw className="w-4 h-4" /> Regenerate
+          </button>
+        </div>
       </div>
     </div>
   );

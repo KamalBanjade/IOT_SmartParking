@@ -13,7 +13,7 @@ export default function SlotCard({ slot }) {
 
   useEffect(() => {
     setPulse(true);
-    const t = setTimeout(() => setPulse(false), 1000);
+    const t = setTimeout(() => setPulse(false), 1500);
     return () => clearTimeout(t);
   }, [slot.status]);
 
@@ -21,10 +21,8 @@ export default function SlotCard({ slot }) {
     if (isOccupied) {
       selectSlot(slot);
       openModal('payment');
-    } else {
-      if (scannedUser) {
-        setShowConfirm(true);
-      }
+    } else if (scannedUser) {
+      setShowConfirm(true);
     }
   };
 
@@ -33,42 +31,61 @@ export default function SlotCard({ slot }) {
       await sessionsApi.entry({ slotId: slot.id, userId: scannedUser.user.id });
       toast.success(`Session started for ${scannedUser.user.name} — ${slot.label}`);
     } catch (err) {
-      toast.error(err.response?.data?.error || "Failed to link session");
+      toast.error(err.response?.data?.error || 'Failed to link session');
     }
   };
 
-  const baseStyles = "relative w-full aspect-square bg-bg-surface rounded-xl p-5 flex flex-col justify-between transition-colors duration-500";
-  const statusStyles = isOccupied 
-    ? "border border-status-occupied/30 cursor-pointer hover:border-status-occupied" 
-    : "border border-bg-border hover:border-accent/40 cursor-pointer hover:opacity-80 transition-opacity duration-150";
-    
-  const pulseClass = pulse ? "ring-2 ring-offset-0 ring-text-muted/50" : "";
-
   return (
     <>
-      <div className={`${baseStyles} ${statusStyles} ${pulseClass}`} onClick={handleClick}>
-        <div className="flex justify-between items-start">
-          <h3 className="text-lg font-bold text-text-primary">{slot.label}</h3>
-          <div className={`w-2 h-2 rounded-full mt-1.5 ${isOccupied ? 'bg-status-occupied' : 'bg-status-available'}`}></div>
+      <div
+        onClick={handleClick}
+        className={`
+          relative w-full aspect-square glass rounded-2xl p-4 flex flex-col justify-between cursor-pointer
+          transition-all duration-300
+          ${pulse ? 'ring-2 ring-accent ring-offset-2 ring-offset-[var(--bg-base)]' : ''}
+          ${isOccupied
+            ? 'border border-occupied/30 shadow-lg shadow-occupied/10 hover:border-occupied/60'
+            : 'border border-available/20 hover:border-available/50 hover:shadow-lg hover:shadow-available/5'
+          }
+        `}
+      >
+        {/* Top row: label + status dot */}
+        <div className="flex items-start justify-between">
+          <h3 className="text-xl font-bold font-mono text-[var(--text-primary)]">{slot.label}</h3>
+          {isOccupied ? (
+            <span className="w-2.5 h-2.5 rounded-full bg-occupied mt-1 flex-shrink-0" />
+          ) : (
+            <span className="relative flex h-2.5 w-2.5 mt-1 flex-shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-available opacity-75" />
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-available" />
+            </span>
+          )}
         </div>
 
+        {/* Center: timer for occupied */}
         <div className="flex-grow flex items-center justify-center">
           {isOccupied && <SlotTimer slotId={slot.id} />}
         </div>
 
-        <div>
-          <p className="text-[10px] tracking-widest text-text-secondary uppercase">
-            {isOccupied ? 'OCCUPIED' : 'AVAILABLE'}
+        {/* Bottom row: status label + controller ID */}
+        <div className="flex items-end justify-between">
+          <p className={`text-[10px] tracking-widest font-semibold uppercase ${isOccupied ? 'text-occupied/70' : 'text-available/70'}`}>
+            {isOccupied ? 'Occupied' : 'Available'}
           </p>
+          {slot.controller_id && (
+            <p className="text-[9px] font-mono text-[var(--text-muted)]">
+              {slot.controller_id}
+            </p>
+          )}
         </div>
       </div>
 
-      <ConfirmModal 
+      <ConfirmModal
         isOpen={showConfirm}
         onClose={() => setShowConfirm(false)}
         onConfirm={startSession}
         title="Start Session?"
-        message={`Link active member ${scannedUser?.user?.name} to slot ${slot.label}?`}
+        message={`Link ${scannedUser?.user?.name} to slot ${slot.label}?`}
         confirmText="Start Session"
         type="info"
       />

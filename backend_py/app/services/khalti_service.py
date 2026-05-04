@@ -10,8 +10,8 @@ async def initiate_payment(payment_id: int, amount: float, slot_label: str, cust
     }
     
     payload = {
-        "return_url": f"{settings.FRONTEND_URL}/payment/success",
-        "website_url": settings.FRONTEND_URL,
+        "return_url": f"{settings.frontend_url}/payment/success",
+        "website_url": settings.frontend_url,
         "amount": int(amount * 100), # Convert NPR to paisa
         "purchase_order_id": f"SPARK-{payment_id}-{int(time.time())}",
         "purchase_order_name": f"Smart Parking Slot {slot_label}",

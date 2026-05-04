@@ -12,8 +12,11 @@ export default function SlotTimer({ slotId }) {
       sessionsApi.getBySlot(slotId).then(res => {
         if (res.data?.entry_time) {
           const entry = new Date(res.data.entry_time);
+          const exit = res.data.exit_time ? new Date(res.data.exit_time) : null;
+          
           const update = () => {
-            const totalMinutes = differenceInMinutes(new Date(), entry);
+            const end = exit || new Date();
+            const totalMinutes = differenceInMinutes(end, entry);
             const h = Math.floor(totalMinutes / 60);
             const m = totalMinutes % 60;
             setDisplay(h > 0 ? `${h}h ${m}m` : `${Math.max(0, m)}m`);

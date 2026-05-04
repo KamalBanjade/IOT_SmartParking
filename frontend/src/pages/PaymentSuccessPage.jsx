@@ -11,9 +11,9 @@ export default function PaymentSuccessPage() {
   useEffect(() => {
     const pidx = searchParams.get('pidx');
     const poId = searchParams.get('purchase_order_id');
-    const paymentId = poId ? parseInt(poId.split('-')[1], 10) : null;
+    const esewaData = searchParams.get('data');
     
-    if (!pidx || !paymentId || verifying.current) {
+    if (!pidx && !esewaData || verifying.current) {
       if (!verifying.current) setStatus('error');
       return;
     }
@@ -21,10 +21,16 @@ export default function PaymentSuccessPage() {
     verifying.current = true;
     const verify = async () => {
       try {
-        const res = await paymentsApi.verifyKhalti({ 
-          pidx, 
-          paymentId 
-        });
+        let res;
+        if (esewaData) {
+          res = await paymentsApi.verifyEsewa(esewaData);
+        } else if (pidx && poId) {
+          const paymentId = parseInt(poId.split('-')[1], 10);
+          res = await paymentsApi.verifyKhalti({ pidx, paymentId });
+        } else {
+          setStatus('error');
+          return;
+        }
         
         if (res.data.success) {
           setStatus('success');

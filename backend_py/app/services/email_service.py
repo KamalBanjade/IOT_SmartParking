@@ -18,7 +18,7 @@ fm = FastMail(conf)
 
 async def send_reset_email(email: str, name: str, token: str, is_first_time: bool = False):
     extra = "&type=setup" if is_first_time else ""
-    reset_url = f"{settings.FRONTEND_URL}/portal/reset-password?token={token}{extra}"
+    reset_url = f"{settings.frontend_url}/portal/reset-password?token={token}{extra}"
     
     subject = 'Welcome to Smart Parking - Set your password' if is_first_time else 'Reset your Smart Parking password'
     title = 'Welcome to Smart Parking!' if is_first_time else 'Password Reset Request'
@@ -51,7 +51,7 @@ async def send_reset_email(email: str, name: str, token: str, is_first_time: boo
     await fm.send_message(message)
 
 async def send_operator_reset_email(email: str, name: str, token: str):
-    reset_url = f"{settings.FRONTEND_URL}/reset-password?token={token}"
+    reset_url = f"{settings.frontend_url}/reset-password?token={token}"
     
     html = f"""
     <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
@@ -78,7 +78,7 @@ async def send_operator_reset_email(email: str, name: str, token: str):
     await fm.send_message(message)
 
 async def send_staff_welcome_email(email: str, name: str, token: str):
-    reset_url = f"{settings.FRONTEND_URL}/reset-password?token={token}&type=setup"
+    reset_url = f"{settings.frontend_url}/reset-password?token={token}&type=setup"
     
     html = f"""
     <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">

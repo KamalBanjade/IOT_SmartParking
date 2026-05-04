@@ -18,7 +18,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
 
 # Import all routers
-from app.routes import slots, users, sessions, payments, admin, auth
+from app.routes import slots, users, sessions, payments, admin, auth, esewa
 
 mqtt_task = None
 
@@ -80,6 +80,7 @@ app.include_router(sessions.router)
 app.include_router(payments.router)
 app.include_router(admin.router)
 app.include_router(auth.router)
+app.include_router(esewa.router)
 
 # Mount Socket.IO
 socket_app = socketio.ASGIApp(sio, other_asgi_app=app)

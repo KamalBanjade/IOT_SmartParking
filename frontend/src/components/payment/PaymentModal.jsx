@@ -3,7 +3,7 @@ import { useParking } from '../../context/ParkingContext';
 import { sessionsApi, paymentsApi, usersApi } from '../../services/api';
 import toast from 'react-hot-toast';
 import { differenceInMinutes, differenceInHours } from 'date-fns';
-import { X, CheckCircle, Loader2 } from 'lucide-react';
+import { X, CheckCircle, Loader2, Smartphone } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 
 export default function PaymentModal() {
@@ -13,9 +13,9 @@ export default function PaymentModal() {
   const [method, setMethod] = useState('cash');
   const [applyDiscount, setApplyDiscount] = useState(true);
   
-  // Khalti QR states
-  const [khaltiQrUrl, setKhaltiQrUrl] = useState(null);
-  const [khaltiPaymentId, setKhaltiPaymentId] = useState(null);
+  // QR states
+  const [qrUrl, setQrUrl] = useState(null);
+  const [currentPaymentId, setCurrentPaymentId] = useState(null);
   const [qrStatus, setQrStatus] = useState('idle'); // idle | loading | showing | confirmed | expired | error
   const [qrTimeLeft, setQrTimeLeft] = useState(300); // 5 min expiry
   
@@ -29,8 +29,8 @@ export default function PaymentModal() {
       setLoading(true);
       setSuccessData(null);
       setQrStatus('idle');
-      setKhaltiQrUrl(null);
-      setKhaltiPaymentId(null);
+      setQrUrl(null);
+      setCurrentPaymentId(null);
       
       sessionsApi.getBySlot(selectedSlot.id)
         .then(async (res) => {
@@ -69,10 +69,10 @@ export default function PaymentModal() {
 
   // Socket listener for payment confirmation
   useEffect(() => {
-    if (!socket || !khaltiPaymentId) return;
+    if (!socket || !currentPaymentId) return;
 
     const handlePaymentConfirmed = (data) => {
-      if (data.paymentId === khaltiPaymentId) {
+      if (data.paymentId === currentPaymentId) {
         onPaymentConfirmed(data);
       }
     };
@@ -81,7 +81,7 @@ export default function PaymentModal() {
     return () => {
       socket.off('paymentConfirmed', handlePaymentConfirmed);
     };
-  }, [socket, khaltiPaymentId]);
+  }, [socket, currentPaymentId]);
 
   // Cleanup polling and timers on unmount
   useEffect(() => {
@@ -116,63 +116,113 @@ export default function PaymentModal() {
       setQrStatus('loading');
 
       const res = await paymentsApi.initiateKhalti(pendingPayment.id);
-      const { paymentUrl, pidx } = res.data;
+      const { paymentUrl } = res.data;
 
-      setKhaltiQrUrl(paymentUrl);
-      setKhaltiPaymentId(pendingPayment.id);
-      setQrStatus('showing');
-      setQrTimeLeft(300);
-
-      // Start countdown timer
-      timerRef.current = setInterval(() => {
-        setQrTimeLeft(prev => {
-          if (prev <= 1) {
-            clearInterval(timerRef.current);
-            if (pollingRef.current) clearInterval(pollingRef.current);
-            setQrStatus('expired');
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-
-      // Start polling
-      pollingRef.current = setInterval(async () => {
-        try {
-          const statusRes = await paymentsApi.getStatus(pendingPayment.id);
-          if (statusRes.data.status === 'paid') {
-            onPaymentConfirmed({
-              paymentId: pendingPayment.id,
-              amount: statusRes.data.amount,
-              method: 'khalti',
-              pointsAwarded: Math.floor(statusRes.data.amount / 10), // Assuming standard points rule
-              memberName: scannedUser?.user?.name || null
-            });
-          }
-        } catch (err) {
-          // Ignore polling errors
-        }
-      }, 3000);
-
+      setQrUrl(paymentUrl);
+      setCurrentPaymentId(pendingPayment.id);
+      startQrFlow();
     } catch (err) {
       setQrStatus('error');
       toast.error('Failed to initiate Khalti payment');
     }
   };
 
+  const handleEsewaClick = async (pendingPayment) => {
+    try {
+      setQrStatus('loading');
+      
+      // QR URL points to our frontend redirect page
+      const paymentUrl = `${window.location.origin}/payment/esewa/pay?payment_id=${pendingPayment.id}`;
+      
+      setQrUrl(paymentUrl);
+      setCurrentPaymentId(pendingPayment.id);
+      startQrFlow();
+    } catch (err) {
+      setQrStatus('error');
+      toast.error('Failed to initiate eSewa payment');
+    }
+  };
+
+  const startQrFlow = () => {
+    setQrStatus('showing');
+    setQrTimeLeft(300);
+
+    // Start countdown timer
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => {
+      setQrTimeLeft(prev => {
+        if (prev <= 1) {
+          clearInterval(timerRef.current);
+          if (pollingRef.current) clearInterval(pollingRef.current);
+          setQrStatus('expired');
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    // Start polling for payment status
+    if (pollingRef.current) clearInterval(pollingRef.current);
+    pollingRef.current = setInterval(async () => {
+      try {
+        if (!currentPaymentId) return;
+        const statusRes = await paymentsApi.getStatus(currentPaymentId);
+        if (statusRes.data.status === 'paid') {
+          onPaymentConfirmed({
+            paymentId: currentPaymentId,
+            amount: statusRes.data.amount,
+            method: method,
+            pointsAwarded: Math.floor(statusRes.data.amount / 10),
+            memberName: scannedUser?.user?.name || null
+          });
+        }
+      } catch (err) {
+        // Ignore polling errors
+      }
+    }, 3000);
+  };
+
   const handleManualExitAndPay = async () => {
     try {
       setLoading(true);
+
+      // End the session and get (or reuse) the payment record.
+      // The backend is idempotent: it won't double-end or double-charge.
       const exitRes = await sessionsApi.exit({ slotId: selectedSlot.id });
-      const { payment: pendingPayment } = exitRes.data;
-      
-      let discountAmount = 0;
-      if (scannedUser?.pointsSummary?.discountAvailable && applyDiscount) {
-        const discountRes = await usersApi.applyDiscount(scannedUser.user.id, selectedSlot.id);
-        discountAmount = discountRes.data.discountAmount;
-        toast.success(`NPR ${discountAmount} discount applied`);
+      const { session: exitedSession, payment: pendingPayment } = exitRes.data;
+
+      if (pendingPayment.status === 'paid') {
+        toast.success("Session already paid!");
+        onPaymentConfirmed({
+          paymentId: pendingPayment.id,
+          sessionId: exitedSession?.id,
+          slotId: selectedSlot.id,
+          slotLabel: selectedSlot.label,
+          amount: pendingPayment.amount,
+          method: pendingPayment.method || 'cash',
+          pointsAwarded: 0
+        });
+        return;
       }
-      
+
+      // Apply loyalty discount if available
+      let discountAmount = 0;
+      if (scannedUser?.pointsSummary?.discountAvailable && applyDiscount && exitedSession?.id) {
+        try {
+          const discountRes = await usersApi.applyDiscount(scannedUser.user.id, exitedSession.id);
+          discountAmount = discountRes.data.discountAmount || 0;
+          if (discountAmount > 0) toast.success(`NPR ${discountAmount} discount applied`);
+        } catch (discErr) {
+          console.warn('Discount apply failed:', discErr);
+        }
+      }
+
+      if (method === 'esewa') {
+        setLoading(false);
+        handleEsewaClick(pendingPayment);
+        return;
+      }
+
       if (method === 'khalti') {
         setLoading(false);
         handleKhaltiClick(pendingPayment);
@@ -181,21 +231,30 @@ export default function PaymentModal() {
 
       // Process Cash Payment
       const payRes = await paymentsApi.pay(pendingPayment.id, method, discountAmount);
-      
+
       setSuccessData({
-        amountReceived: Math.max(0, pendingPayment.amount - discountAmount),
+        amountReceived: Math.max(0, (pendingPayment.amount || 0) - discountAmount),
         method,
         pointsEarned: payRes.data.pointsAwarded || 0,
-        newBalance: scannedUser ? (scannedUser.pointsSummary.total - (discountAmount ? 50 : 0) + (payRes.data.pointsAwarded || 0)) : 0
+        newBalance: scannedUser
+          ? (scannedUser.pointsSummary.total - (discountAmount > 0 ? 50 : 0) + (payRes.data.pointsAwarded || 0))
+          : 0
       });
-      
+
       setTimeout(() => {
         setScannedUser(null);
         closeModal();
       }, 4000);
 
     } catch (err) {
-      toast.error(err.response?.data?.error || "Payment processing failed");
+      const msg = err.response?.data?.detail || err.response?.data?.error || 'Payment processing failed';
+      // If the session is already paid, show a friendly message instead of an error
+      if (err.response?.status === 400 && msg.toLowerCase().includes('already')) {
+        toast.success('This session is already paid!');
+        closeModal();
+      } else {
+        toast.error(msg);
+      }
       setLoading(false);
     }
   };
@@ -205,22 +264,24 @@ export default function PaymentModal() {
     closeModal();
   };
 
-  const renderDuration = (entry) => {
+  const renderDuration = (entry, exit) => {
     if (!entry) return '0m';
-    const mins = differenceInMinutes(new Date(), new Date(entry));
-    const hrs = differenceInHours(new Date(), new Date(entry));
+    const end = exit ? new Date(exit) : new Date();
+    const mins = differenceInMinutes(end, new Date(entry));
+    const hrs = differenceInHours(end, new Date(entry));
     if (hrs > 0) return `${hrs}h ${mins % 60}m`;
     return `${mins}m`;
   };
 
-  const calculateOriginalAmount = (entry) => {
+  const calculateOriginalAmount = (entry, exit) => {
     if (!entry) return 0;
-    const mins = differenceInMinutes(new Date(), new Date(entry));
+    const end = exit ? new Date(exit) : new Date();
+    const mins = differenceInMinutes(end, new Date(entry));
     const hrs = Math.max(1, Math.ceil(mins / 60));
     return hrs * 30; // 30 NPR per hour
   };
 
-  const originalAmount = calculateOriginalAmount(session?.entry_time);
+  const originalAmount = session?.amountDue || calculateOriginalAmount(session?.entry_time, session?.exit_time);
   const discountAvailable = scannedUser?.pointsSummary?.discountAvailable;
   const finalAmount = Math.max(0, originalAmount - (discountAvailable && applyDiscount ? 25 : 0));
 
@@ -268,7 +329,7 @@ export default function PaymentModal() {
     );
   }
 
-  const renderKhaltiQrState = () => {
+  const renderQrState = () => {
     if (qrStatus === 'loading') {
       return (
         <div className="flex flex-col items-center justify-center py-10 space-y-4">
@@ -282,25 +343,29 @@ export default function PaymentModal() {
       const mins = Math.floor(qrTimeLeft / 60);
       const secs = qrTimeLeft % 60;
       const timeString = `${mins}:${secs.toString().padStart(2, '0')}`;
+      const isEsewa = method === 'esewa';
       
       return (
         <div className="flex flex-col items-center text-center space-y-4 py-4">
-          <p className="text-sm font-medium text-text-primary">Scan to Pay with Khalti</p>
-          
-          <div className="bg-white p-3 rounded-xl inline-block shadow-sm">
-            <QRCodeCanvas value={khaltiQrUrl} size={200} level="M" includeMargin={false} />
+          <div className="flex items-center gap-3">
+             <img src={isEsewa ? "/Images/esewa.png" : "/Images/khalti.png"} alt={method} className="h-6 object-contain" />
+             <p className="text-sm font-black text-[var(--text-primary)] uppercase tracking-widest">Scan to Pay with {method}</p>
           </div>
           
-          <div>
-            <p className="text-xs text-text-secondary">Open Khalti app &rarr; Scan &amp; Pay</p>
-            <p className="text-lg font-bold text-text-primary mt-1">Amount: NPR {finalAmount}</p>
+          <div className="bg-white p-4 rounded-[2rem] inline-block shadow-2xl border-4 border-[var(--bg-elevated)]">
+            <QRCodeCanvas value={qrUrl} size={220} level="H" includeMargin={false} />
+          </div>
+          
+          <div className="bg-[var(--bg-elevated)]/50 px-6 py-4 rounded-2xl border border-[var(--bg-border)] w-full">
+            <p className="text-[10px] text-[var(--text-muted)] font-black uppercase tracking-[0.2em]">Payable Amount</p>
+            <p className="text-2xl font-black text-[var(--text-primary)] mt-1 font-mono">NPR {finalAmount.toFixed(2)}</p>
           </div>
           
           <div className="flex flex-col items-center gap-1">
-            <p className="text-xs text-text-muted font-mono">⏱ Expires in {timeString}</p>
-            <div className="flex items-center gap-1.5 mt-2">
-              <div className="w-2 h-2 rounded-full bg-status-available animate-pulse"></div>
-              <p className="text-xs text-text-muted">Waiting for payment...</p>
+            <p className="text-[10px] text-accent font-black uppercase tracking-widest mt-2">⏱ Session Expires in {timeString}</p>
+            <div className="flex items-center gap-2 mt-4 bg-available/10 px-4 py-2 rounded-full border border-available/20">
+              <div className="w-2 h-2 rounded-full bg-available animate-pulse"></div>
+              <p className="text-[10px] text-available font-black uppercase tracking-widest">Listening for transaction...</p>
             </div>
           </div>
           
@@ -310,9 +375,9 @@ export default function PaymentModal() {
               if (pollingRef.current) clearInterval(pollingRef.current);
               setQrStatus('idle');
             }}
-            className="text-xs text-text-secondary hover:text-text-primary underline mt-2"
+            className="text-[10px] font-black text-[var(--text-muted)] hover:text-accent uppercase tracking-widest transition-colors mt-4"
           >
-            &larr; Change Method
+            &larr; Switch Payment Method
           </button>
         </div>
       );
@@ -380,7 +445,7 @@ export default function PaymentModal() {
         ) : !session ? (
           <div className="py-8 text-center text-status-occupied text-sm">No active session found.</div>
         ) : qrStatus !== 'idle' ? (
-          renderKhaltiQrState()
+          renderQrState()
         ) : (
           <div className="space-y-6">
             
@@ -404,7 +469,7 @@ export default function PaymentModal() {
               </div>
               <div className="flex justify-between items-center border-b border-bg-elevated py-2.5">
                 <span className="text-xs text-text-secondary">Duration</span>
-                <span className="text-sm font-medium text-text-primary">{renderDuration(session.entry_time)}</span>
+                <span className="text-sm font-medium text-text-primary">{renderDuration(session.entry_time, session.exit_time)}</span>
               </div>
               <div className="flex justify-between items-center py-4">
                 <span className="text-xs text-text-secondary">Amount Due</span>
@@ -422,15 +487,21 @@ export default function PaymentModal() {
               <div className="grid grid-cols-2 gap-2">
                 <button 
                   onClick={() => setMethod('cash')}
-                  className={`py-2 rounded-lg text-sm font-medium transition-colors ${method === 'cash' ? 'border border-accent text-text-primary bg-bg-elevated' : 'border border-bg-border text-text-secondary bg-bg-elevated hover:bg-bg-border'}`}
+                  className={`py-3 rounded-lg text-sm font-black uppercase tracking-widest transition-all ${method === 'cash' ? 'border-2 border-accent text-accent bg-accent/5' : 'border border-bg-border text-text-muted bg-bg-elevated/30 hover:bg-bg-border'}`}
                 >
                   Cash
                 </button>
                 <button 
                   onClick={() => setMethod('khalti')}
-                  className={`py-2 rounded-lg text-sm font-medium transition-colors relative ${method === 'khalti' ? 'border border-accent text-text-primary bg-bg-elevated' : 'border border-bg-border text-text-secondary bg-bg-elevated hover:bg-bg-border'}`}
+                  className={`p-2 rounded-lg transition-all relative flex items-center justify-center h-14 ${method === 'khalti' ? 'border-2 border-[#5c2d91] bg-[#5c2d91]/5' : 'border border-bg-border bg-bg-elevated/30 hover:bg-bg-border'}`}
                 >
-                  Khalti
+                  <img src="/Images/khalti.png" alt="Khalti" className="h-8 object-contain" />
+                </button>
+                <button 
+                  onClick={() => setMethod('esewa')}
+                  className={`p-2 rounded-lg transition-all relative flex items-center justify-center h-14 ${method === 'esewa' ? 'border-2 border-[#60bb46] bg-[#60bb46]/5' : 'border border-bg-border bg-bg-elevated/30 hover:bg-bg-border'}`}
+                >
+                  <img src="/Images/esewa.png" alt="eSewa" className="h-8 object-contain" />
                 </button>
               </div>
             </div>
@@ -438,9 +509,9 @@ export default function PaymentModal() {
             <button 
               onClick={handleManualExitAndPay}
               disabled={loading}
-              className="w-full h-10 bg-accent hover:bg-blue-600 text-white text-sm font-medium rounded-lg transition-colors duration-150 disabled:opacity-50"
+              className={`w-full h-10 text-white text-sm font-medium rounded-lg transition-colors duration-150 disabled:opacity-50 ${method === 'esewa' ? 'bg-[#60bb46] hover:bg-[#52a13b]' : 'bg-accent hover:bg-blue-600'}`}
             >
-              {method === 'khalti' ? 'Generate QR' : 'Confirm Payment'}
+              {method === 'cash' ? 'Confirm Payment' : 'Continue to Payment'}
             </button>
           </div>
         )}

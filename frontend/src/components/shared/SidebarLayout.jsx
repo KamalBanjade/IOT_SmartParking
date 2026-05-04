@@ -9,6 +9,7 @@ const NAV_METADATA = {
   '/': { title: 'Dashboard', desc: 'Real-time infrastructure and slot occupancy' },
   '/admin': { title: 'Audit Intelligence', desc: 'Immutable system logs and transaction history' },
   '/monitor': { title: 'Live Monitor', desc: 'Visual slot tracking and status telemetry' },
+  '/sessions': { title: 'Session Activity', desc: 'Comprehensive log of ongoing and past sessions' },
   '/members': { title: 'Member Directory', desc: 'Manage registered member profiles and access' },
   '/register': { title: 'System Enrollment', desc: 'Authorized member and official onboarding' },
 };

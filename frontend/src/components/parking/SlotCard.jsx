@@ -6,10 +6,12 @@ import ConfirmModal from '../shared/ConfirmModal';
 import toast from 'react-hot-toast';
 
 export default function SlotCard({ slot }) {
-  const { selectSlot, openModal, scannedUser } = useParking();
+  const { selectSlot, openModal, scannedUser, setScannedUser } = useParking();
   const isOccupied = slot.status === 'occupied';
   const [pulse, setPulse] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [showLinkConfirm, setShowLinkConfirm] = useState(false);
+  const [showEndConfirm, setShowEndConfirm] = useState(false);
 
   useEffect(() => {
     setPulse(true);
@@ -19,10 +21,42 @@ export default function SlotCard({ slot }) {
 
   const handleClick = async () => {
     if (isOccupied) {
-      selectSlot(slot);
-      openModal('payment');
+      if (scannedUser) {
+        // If a member is scanned, offer to link them to this occupied slot
+        setShowLinkConfirm(true);
+      } else {
+        setShowEndConfirm(true);
+      }
     } else if (scannedUser) {
       setShowConfirm(true);
+    }
+  };
+
+  const handleEndSession = async () => {
+    try {
+      // End the session immediately to stop the timer and release the slot
+      await sessionsApi.exit({ slotId: slot.id, userId: scannedUser?.user?.id });
+      toast.success('Session ended. Ready for payment.');
+      
+      // Open the modal to process payment
+      selectSlot(slot);
+      openModal('payment');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to end session');
+    } finally {
+      setShowEndConfirm(false);
+    }
+  };
+
+  const linkMember = async () => {
+    try {
+      // Find active session for this slot and link the user
+      await sessionsApi.entry({ slotId: slot.id, userId: scannedUser.user.id });
+      toast.success(`Linked ${scannedUser.user.name} to slot ${slot.label}`);
+      setScannedUser(null);
+      setShowLinkConfirm(false);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to link member');
     }
   };
 
@@ -30,6 +64,7 @@ export default function SlotCard({ slot }) {
     try {
       await sessionsApi.entry({ slotId: slot.id, userId: scannedUser.user.id });
       toast.success(`Session started for ${scannedUser.user.name} — ${slot.label}`);
+      setScannedUser(null);
     } catch (err) {
       toast.error(err.response?.data?.error || 'Failed to link session');
     }
@@ -88,6 +123,27 @@ export default function SlotCard({ slot }) {
         message={`Link ${scannedUser?.user?.name} to slot ${slot.label}?`}
         confirmText="Start Session"
         type="info"
+      />
+
+      <ConfirmModal
+        isOpen={showLinkConfirm}
+        onClose={() => setShowLinkConfirm(false)}
+        onConfirm={linkMember}
+        title="Link Member?"
+        message={`Assign ${scannedUser?.user?.name} to the active session in ${slot.label}?`}
+        confirmText="Link Member"
+        type="info"
+      />
+
+      <ConfirmModal
+        isOpen={showEndConfirm}
+        onClose={() => setShowEndConfirm(false)}
+        onConfirm={handleEndSession}
+        title="Process Exit?"
+        message={`Do you want to end the session for ${slot.label} and proceed to payment?`}
+        confirmText="Yes, End Session"
+        cancelText="No, Keep Active"
+        type="warning"
       />
     </>
   );

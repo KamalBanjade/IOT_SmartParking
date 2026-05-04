@@ -35,17 +35,27 @@ async def handle_message(topic, payload, sio):
         if status == "occupied":
             await session_service.start_session(slot["id"])
         else:
-            session = await session_service.end_session(slot["id"])
-            if session:
-                await payment_service.create_payment(
-                    session["id"], session["amountDue"]
-                )
+            # Car physically left -> End the session (stop billing timer)
+            print(f"[MQTT] Slot {slot['label']} is now physically available, ending session timer.")
+            await session_service.end_session(slot["id"])
 
-        await sio.emit("slotUpdated", {
+        # Prepare payload for frontend
+        update_payload = {
             "slotId": slot["id"],
+            "id": slot["id"], # Send both to be safe
             "label": slot["label"],
             "status": status,
+            "controllerId": controller_id,
             "last_updated": slot["last_updated"].isoformat() if slot.get("last_updated") else None
+        }
+
+        await sio.emit("slotUpdated", update_payload)
+        
+        # Also emit a general event to refresh dashboard stats if needed
+        await sio.emit("activityUpdate", {
+            "type": "slot_sync",
+            "slotLabel": slot["label"],
+            "status": status
         })
 
         print(f"[MQTT] Sync: {slot['label']} is now {status}")

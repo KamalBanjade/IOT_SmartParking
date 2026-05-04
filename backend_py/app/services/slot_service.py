@@ -39,3 +39,25 @@ async def update_slot_status(controller_id: str, status: str):
             raise ValueError(f"No slot found with controller_id \"{controller_id}\"")
 
         return dict(record)
+
+async def update_slot_status_by_id(slot_id: int, status: str):
+    allowed = ['available', 'occupied']
+    if status not in allowed:
+        raise ValueError(f"Invalid status \"{status}\". Must be: {', '.join(allowed)}")
+
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        record = await conn.fetchrow(
+            """
+            UPDATE parking_slots
+            SET status = $1, last_updated = NOW()
+            WHERE id = $2
+            RETURNING *
+            """,
+            status, slot_id
+        )
+
+        if not record:
+            raise ValueError(f"No slot found with ID \"{slot_id}\"")
+
+        return dict(record)

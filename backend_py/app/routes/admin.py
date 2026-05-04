@@ -2,6 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.middleware.auth import require_admin, require_operator
 from app.config.db import get_pool
 from typing import Optional
+import asyncio
+from datetime import datetime, timezone
+from app.services import session_service
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -85,10 +88,13 @@ async def get_admin_sessions(payload: dict = Depends(require_operator), date: Op
       pool = get_pool()
       async with pool.acquire() as conn:
           query = """
-              SELECT ps.*, s.label as slot_label, u.name as user_name,
+              SELECT ps.*, s.label as slot_label, u.name as user_name, u.phone as user_phone, u.email as user_email,
+                     (SELECT id FROM payments WHERE session_id = ps.id ORDER BY id DESC LIMIT 1) as payment_id,
                      (SELECT amount FROM payments WHERE session_id = ps.id ORDER BY id DESC LIMIT 1) as amount,
                      (SELECT method FROM payments WHERE session_id = ps.id ORDER BY id DESC LIMIT 1) as payment_method,
-                     (SELECT status FROM payments WHERE session_id = ps.id ORDER BY id DESC LIMIT 1) as payment_status
+                     (SELECT status FROM payments WHERE session_id = ps.id ORDER BY id DESC LIMIT 1) as payment_status,
+                     (SELECT transaction_id FROM payments WHERE session_id = ps.id ORDER BY id DESC LIMIT 1) as transaction_id,
+                     (SELECT gateway_response FROM payments WHERE session_id = ps.id ORDER BY id DESC LIMIT 1) as gateway_response
               FROM parking_sessions ps
               JOIN parking_slots s ON ps.slot_id = s.id
               LEFT JOIN users u ON ps.user_id = u.id
@@ -106,6 +112,16 @@ async def get_admin_sessions(payload: dict = Depends(require_operator), date: Op
           results = []
           for r in records:
               d = dict(r)
+              
+              # Auto-recovery for "Paid but Active" sessions
+              if d['status'] == 'active' and d.get('payment_status') == 'paid':
+                  d['status'] = 'completed'
+                  # If exit_time is missing, try to use the paid_at from a payment or now
+                  if not d.get('exit_time'):
+                      d['exit_time'] = datetime.now(timezone.utc)
+                  # Fix the database in the background
+                  asyncio.create_task(session_service.end_session_by_id(d['id']))
+
               if d.get('amount') is not None: d['amount'] = float(d['amount'])
               results.append(d)
           return results

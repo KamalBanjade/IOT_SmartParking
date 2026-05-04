@@ -3,9 +3,10 @@ import PortalNavbar from '../../components/portal/PortalNavbar';
 import { portalApi } from '../../services/api';
 import { useCustomerAuth } from '../../hooks/useCustomerAuth';
 import { QRCodeCanvas } from 'qrcode.react';
-import { Download, ChevronRight, Star, History, CreditCard, Clock, MapPin, TrendingUp, Award, User } from 'lucide-react';
+import { Download, ChevronRight, Star, History, CreditCard, Clock, MapPin, TrendingUp, Award, User, Smartphone } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { format } from 'date-fns';
+import CheckoutButton from '../../components/CheckoutButton';
+import { format, differenceInMinutes } from 'date-fns';
 import toast from 'react-hot-toast';
 
 export default function PortalDashboardPage() {
@@ -37,7 +38,13 @@ export default function PortalDashboardPage() {
       window.location.href = res.data.payment_url;
     } catch (err) {
       setPayingSessionId(null);
-      toast.error('Failed to initiate Khalti payment');
+      const msg = err.response?.data?.detail || 'Failed to initiate Khalti payment';
+      if (msg.toLowerCase().includes('already')) {
+        toast.success('This session is already paid!');
+        fetchData();
+      } else {
+        toast.error(msg);
+      }
     }
   };
 
@@ -62,8 +69,14 @@ export default function PortalDashboardPage() {
   }
 
   // Pending payments (ones the user needs to take action on)
-  const pendingSessions = recentSessions.filter(s => s.session_status === 'completed' && s.payment_status === 'pending');
-  const activeSessions = recentSessions.filter(s => s.session_status === 'active');
+  // 'status' is the session record status; 'session_status' is an alias returned by some endpoints.
+  // We check both to be safe.
+  const pendingSessions = recentSessions.filter(s =>
+    (s.status === 'completed' || s.session_status === 'completed') && s.payment_status === 'pending'
+  );
+  const activeSessions = recentSessions.filter(s =>
+    s.status === 'active' || s.session_status === 'active'
+  );
 
   return (
     <div className="min-h-screen bg-[var(--bg-base)] pb-20">
@@ -309,41 +322,67 @@ function StatCard({ icon, label, value, subtext }) {
 }
 
 function ActionCard({ session, onPay, loading }) {
+  const amount = session.amount != null ? parseFloat(session.amount) : 0;
   return (
     <div className="glass rounded-2xl border-2 border-pending/30 bg-pending/5 p-5 relative overflow-hidden group">
       <div className="absolute top-0 right-0 p-3">
-        <div className="w-8 h-8 rounded-full bg-pending/10 flex items-center justify-center text-pending animate-bounce">
-          $
-        </div>
+        <div className="w-8 h-8 rounded-full bg-pending/10 flex items-center justify-center text-pending animate-bounce">$</div>
       </div>
       <div className="flex items-center gap-2 mb-4">
         <span className="text-xs font-bold px-2 py-1 bg-pending/20 text-pending rounded-lg border border-pending/20">
           SLOT {session.slot_label}
         </span>
-        <span className="text-[10px] font-bold text-pending uppercase tracking-tighter">Payment Pending</span>
+        <span className="text-[10px] font-bold text-pending uppercase tracking-tighter">Payment Due</span>
       </div>
-      <div className="mb-6">
-        <p className="text-3xl font-bold text-[var(--text-primary)]">NPR {session.amount}</p>
-        <p className="text-xs text-[var(--text-muted)] mt-1">Exit at {format(new Date(session.exit_time), 'HH:mm')}</p>
+      <div className="mb-5">
+        <p className="text-3xl font-bold text-[var(--text-primary)]">NPR {amount.toFixed(2)}</p>
+        {session.exit_time && (
+          <p className="text-xs text-[var(--text-muted)] mt-1">Parked until {format(new Date(session.exit_time), 'HH:mm')}</p>
+        )}
       </div>
-      <button 
-        onClick={() => onPay(session.payment_id)}
-        disabled={loading}
-        className="w-full py-3 bg-pending hover:bg-orange-600 text-white rounded-xl font-bold transition-all shadow-lg shadow-pending/20 disabled:opacity-50"
-      >
-        {loading ? 'Redirecting...' : 'Complete Payment'}
-      </button>
+      <div className="flex gap-2">
+        <button
+          onClick={() => onPay(session.payment_id)}
+          disabled={loading}
+          className="flex-1 py-3 bg-[#5C2D91] hover:bg-[#4a2474] text-white rounded-xl font-bold transition-all shadow-lg flex items-center justify-center gap-2 disabled:opacity-50 text-sm"
+        >
+          <Smartphone className="w-4 h-4" />
+          {loading ? 'Wait...' : 'Khalti'}
+        </button>
+        <CheckoutButton
+          paymentId={session.payment_id}
+          amount={amount}
+          className="flex-1 py-3 bg-[#60bb46] hover:bg-[#52a13b] text-white rounded-xl font-bold transition-all shadow-lg flex items-center justify-center gap-2 text-sm"
+        >
+          <Smartphone className="w-4 h-4" />
+          eSewa
+        </CheckoutButton>
+      </div>
     </div>
   );
 }
 
 function LiveCard({ session }) {
+  const [elapsed, setElapsed] = React.useState('');
+
+  React.useEffect(() => {
+    const update = () => {
+      const mins = differenceInMinutes(new Date(), new Date(session.entry_time));
+      const h = Math.floor(mins / 60);
+      const m = mins % 60;
+      setElapsed(h > 0 ? `${h}h ${m}m` : `${m}m`);
+    };
+    update();
+    const id = setInterval(update, 30000);
+    return () => clearInterval(id);
+  }, [session.entry_time]);
+
   return (
     <div className="glass rounded-2xl border border-accent/30 bg-accent/5 p-5 relative">
       <div className="absolute top-4 right-4">
         <div className="flex items-center gap-1">
           <div className="w-2 h-2 rounded-full bg-accent animate-ping" />
-          <span className="text-[10px] font-bold text-accent uppercase">Active</span>
+          <span className="text-[10px] font-bold text-accent uppercase">Live</span>
         </div>
       </div>
       <div className="mb-4">
@@ -351,15 +390,19 @@ function LiveCard({ session }) {
           SLOT {session.slot_label}
         </span>
       </div>
-      <div className="space-y-3 sm:space-y-4">
+      <div className="space-y-3">
         <div>
-          <p className="text-[10px] sm:text-xs text-[var(--text-muted)] uppercase mb-1">Time Elapsed</p>
-          <p className="text-lg sm:text-xl font-bold text-[var(--text-primary)] font-mono">
-            {format(new Date(session.entry_time), 'HH:mm')} - Now
+          <p className="text-[10px] text-[var(--text-muted)] uppercase mb-0.5">Entry Time</p>
+          <p className="text-lg font-bold text-[var(--text-primary)] font-mono">
+            {format(new Date(session.entry_time), 'HH:mm')}
           </p>
         </div>
-        <div className="pt-3 sm:pt-4 border-t border-accent/10">
-          <p className="text-[9px] sm:text-[10px] text-[var(--text-muted)]">Live updates enabled via controller {session.controller_id || '—'}</p>
+        <div>
+          <p className="text-[10px] text-[var(--text-muted)] uppercase mb-0.5">Time Elapsed</p>
+          <p className="text-2xl font-black text-accent font-mono">{elapsed || '...'}</p>
+        </div>
+        <div className="pt-3 border-t border-accent/10">
+          <p className="text-[10px] text-[var(--text-muted)]">Timer stops automatically when you exit.</p>
         </div>
       </div>
     </div>

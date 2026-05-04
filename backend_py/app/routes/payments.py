@@ -26,35 +26,38 @@ async def verify_khalti_payment(data: VerifyModel, request: Request, auth=Depend
                 'gateway_response': verify_res
             })
             
-            pool = get_pool()
-            async with pool.acquire() as conn:
-                ps = await conn.fetchrow("""
-                    SELECT s.id as slot_id, s.label as slot_label, s.controller_id, u.name as member_name
-                    FROM parking_sessions ps
-                    JOIN parking_slots s ON ps.slot_id = s.id
-                    LEFT JOIN users u ON ps.user_id = u.id
-                    WHERE ps.id = $1
-                """, payment['session_id'])
-                
-            sio = getattr(request.app.state, "sio", None)
-            if sio:
-                await sio.emit("paymentConfirmed", {
-                    "paymentId": payment['id'],
-                    "sessionId": payment['session_id'],
-                    "slotId": ps['slot_id'],
-                    "slotLabel": ps['slot_label'],
-                    "amount": float(payment['amount']),
-                    "method": "khalti",
-                    "pointsAwarded": payment.get('pointsAwarded', 0),
-                    "memberName": ps['member_name']
-                })
-                
-                await sio.emit("slotUpdated", {
-                    "id": ps['slot_id'],
-                    "controllerId": ps['controller_id'],
-                    "label": ps['slot_label'],
-                    "status": "available"
-                })
+            try:
+                pool = get_pool()
+                async with pool.acquire() as conn:
+                    ps = await conn.fetchrow("""
+                        SELECT s.id as slot_id, s.label as slot_label, s.controller_id, u.name as member_name
+                        FROM parking_sessions ps
+                        JOIN parking_slots s ON ps.slot_id = s.id
+                        LEFT JOIN users u ON ps.user_id = u.id
+                        WHERE ps.id = $1
+                    """, payment['session_id'])
+                    
+                sio = getattr(request.app.state, "sio", None)
+                if sio and ps:
+                    await sio.emit("paymentConfirmed", {
+                        "paymentId": payment['id'],
+                        "sessionId": payment['session_id'],
+                        "slotId": ps['slot_id'],
+                        "slotLabel": ps['slot_label'],
+                        "amount": float(payment['amount']),
+                        "method": "khalti",
+                        "pointsAwarded": payment.get('pointsAwarded', 0),
+                        "memberName": ps['member_name']
+                    })
+                    
+                    await sio.emit("slotUpdated", {
+                        "id": ps['slot_id'],
+                        "controllerId": ps['controller_id'],
+                        "label": ps['slot_label'],
+                        "status": "available"
+                    })
+            except Exception as e:
+                print(f"[khaltiVerify] Socket notification failed: {e}")
 
             return {
                 "success": True, 
@@ -96,6 +99,41 @@ async def get_payment_status(id: int, auth=Depends(optional_auth)):
 async def pay_payment(id: int, data: PayModel, request: Request, operator=Depends(require_operator)):
     try:
         payment = await payment_service.mark_paid(id, data.method, data.appliedDiscount)
+        
+        try:
+            # Emit socket events for cash payment too
+            pool = get_pool()
+            async with pool.acquire() as conn:
+                ps = await conn.fetchrow("""
+                    SELECT s.id as slot_id, s.label as slot_label, s.controller_id, u.name as member_name
+                    FROM parking_sessions ps
+                    JOIN parking_slots s ON ps.slot_id = s.id
+                    LEFT JOIN users u ON ps.user_id = u.id
+                    WHERE ps.id = $1
+                """, payment['session_id'])
+                
+            sio = getattr(request.app.state, "sio", None)
+            if sio and ps:
+                await sio.emit("paymentConfirmed", {
+                    "paymentId": payment['id'],
+                    "sessionId": payment['session_id'],
+                    "slotId": ps['slot_id'],
+                    "slotLabel": ps['slot_label'],
+                    "amount": float(payment['amount']),
+                    "method": data.method,
+                    "pointsAwarded": payment.get('pointsAwarded', 0),
+                    "memberName": ps['member_name']
+                })
+                
+                await sio.emit("slotUpdated", {
+                    "id": ps['slot_id'],
+                    "controllerId": ps['controller_id'],
+                    "label": ps['slot_label'],
+                    "status": "available"
+                })
+        except Exception as e:
+            print(f"[paymentsRoute] Socket emission failed: {e}")
+
         return {
             "payment": payment,
             "pointsAwarded": payment.get('pointsAwarded', 0)
@@ -122,6 +160,11 @@ async def initiate_khalti(id: int, operator=Depends(require_operator)):
                 raise HTTPException(status_code=404, detail="Payment not found")
                 
             data = dict(record)
+            
+            # --- GUARD: Prevent double payment ---
+            if data['status'] == 'paid':
+                raise HTTPException(status_code=400, detail="Payment already completed for this session")
+            
             customer_info = {}
             if data['user_id']:
                 user = await user_service.get_user_by_id(data['user_id'])

@@ -130,12 +130,24 @@ export default function MemberPage() {
                     <div className="w-px h-8 bg-[var(--bg-border)]" />
                     
                     <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-lg bg-accent/5 flex items-center justify-center text-accent border border-accent/10">
-                        <Smartphone className="w-4 h-4" />
+                      <div className="w-8 h-8 rounded-lg bg-[#5c2d91]/5 flex items-center justify-center border border-[#5c2d91]/10">
+                        <img src="/Images/khalti.png" alt="Khalti" className="h-4 object-contain" />
                       </div>
                       <div className="flex flex-col">
-                        <span className="text-[10px] font-black uppercase text-accent leading-none mb-0.5">Khalti</span>
+                        <span className="text-[10px] font-black uppercase text-[#5c2d91] leading-none mb-0.5">Khalti</span>
                         <span className="text-sm font-black text-[var(--text-primary)] font-mono">{sessions.filter(s => s.payment_method === 'khalti').length}</span>
+                      </div>
+                    </div>
+
+                    <div className="w-px h-8 bg-[var(--bg-border)]" />
+
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-lg bg-[#60bb46]/5 flex items-center justify-center border border-[#60bb46]/10">
+                        <img src="/Images/esewa.png" alt="eSewa" className="h-4 object-contain" />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-[10px] font-black uppercase text-[#60bb46] leading-none mb-0.5">eSewa</span>
+                        <span className="text-sm font-black text-[var(--text-primary)] font-mono">{sessions.filter(s => s.payment_method === 'esewa').length}</span>
                       </div>
                     </div>
                   </div>

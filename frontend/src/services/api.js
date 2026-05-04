@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+const API_URL = import.meta.env.VITE_API_URL || `http://${window.location.hostname}:3000`;
 
 export const operatorApi = axios.create({
   baseURL: API_URL,
@@ -86,6 +86,8 @@ export const paymentsApi = {
   initiateKhalti: (id) => operatorApi.post(`/api/payments/${id}/khalti/initiate`),
   verifyKhalti: (data) => operatorApi.post('/api/payments/khalti/verify', data),
   getStatus: (paymentId) => operatorApi.get(`/api/payments/${paymentId}/status`),
+  initiateEsewa: (data) => operatorApi.post(`/api/esewa/initiate`, data),
+  verifyEsewa: (data) => operatorApi.get('/api/esewa/verify', { params: { data } }),
 };
 
 export const adminApi = {
@@ -114,6 +116,7 @@ export const portalApi = {
   getSessions: (page = 1, limit = 10) => customerApi.get(`/api/sessions/my?page=${page}&limit=${limit}`),
   initiatePayment: (paymentId) => customerApi.post(`/api/payments/${paymentId}/customer/initiate`),
   getPaymentStatus: (paymentId) => customerApi.get(`/api/payments/${paymentId}/status`),
+  initiateEsewa: (data) => customerApi.post(`/api/esewa/initiate`, data),
 };
 
 export default operatorApi;

@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Activity, Users, UserPlus, BarChart3,
   Monitor, LogOut, ChevronLeft, ChevronRight,
-  Sun, Moon, Car, ShieldCheck, Power
+  Sun, Moon, Car, ShieldCheck, Power, History
 } from 'lucide-react';
 import { useParking } from '../../context/ParkingContext';
 import { useOperatorAuth } from '../../hooks/useOperatorAuth';
@@ -16,6 +16,7 @@ const NAV = [
     items: [
       { label: 'Dashboard',    path: '/',        icon: LayoutDashboard, desc: 'Real-time parking overview' },
       { label: 'Live Monitor', path: '/monitor', icon: Activity, desc: 'Active slot monitoring' },
+      { label: 'Activity',     path: '/sessions', icon: History, desc: 'Detailed session and payment logs' },
     ]
   },
   {

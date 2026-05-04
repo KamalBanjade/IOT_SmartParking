@@ -15,6 +15,8 @@ import PaymentFailurePage from './pages/PaymentFailurePage';
 import OperatorForgotPasswordPage from './pages/OperatorForgotPasswordPage';
 import OperatorResetPasswordPage from './pages/OperatorResetPasswordPage';
 import MembersListPage from './pages/MembersListPage';
+import SessionsListPage from './pages/SessionsListPage';
+import EsewaGatewayPage from './pages/EsewaGatewayPage';
 
 import PortalLoginPage from './pages/portal/PortalLoginPage';
 import PortalSetupPage from './pages/portal/PortalSetupPage';
@@ -43,12 +45,14 @@ function App() {
             <Route path="/portal/reset-password" element={<PortalResetPasswordPage />} />
             <Route path="/payment/success" element={<PaymentSuccessPage />} />
             <Route path="/payment/failure" element={<PaymentFailurePage />} />
+            <Route path="/payment/esewa/pay" element={<EsewaGatewayPage />} />
             <Route path="/display" element={<DisplayPage />} />
 
             {/* Operator Protected */}
             <Route path="/" element={<OperatorRoute><DashboardPage /></OperatorRoute>} />
             <Route path="/monitor" element={<OperatorRoute><MonitorPage /></OperatorRoute>} />
             <Route path="/members" element={<OperatorRoute><MembersListPage /></OperatorRoute>} />
+            <Route path="/sessions" element={<OperatorRoute><SessionsListPage /></OperatorRoute>} />
             <Route path="/member/:id" element={<OperatorRoute><MemberPage /></OperatorRoute>} />
 
             {/* Admin Protected */}
